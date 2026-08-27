@@ -6,6 +6,7 @@ services:
 
     ports:
       - "127.0.0.1:${WEBSERVER_PORT:-8080}:${WEBSERVER_PORT:-8080}"
+      - "127.0.0.1:${TERMINAL_PORT:-8090}:${TERMINAL_PORT:-8090}"
 
     volumes:
       - ../config:/app/config:ro
@@ -15,6 +16,11 @@ services:
       - TZ=Asia/Shanghai
       # Web 服务器
       - WEBSERVER_PORT=${WEBSERVER_PORT:-8080}
+      # 选题终端（TOPIC TERMINAL）
+      - TERMINAL_ENABLED=${TERMINAL_ENABLED:-true}
+      - TERMINAL_PORT=${TERMINAL_PORT:-8090}
+      - TERMINAL_TOKEN=${TERMINAL_TOKEN:-}
+      - TERMINAL_AUTO_RESCORE=${TERMINAL_AUTO_RESCORE:-1}
       # 通知渠道
       - FEISHU_WEBHOOK_URL=${FEISHU_WEBHOOK_URL:-}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}

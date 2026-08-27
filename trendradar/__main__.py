@@ -8,6 +8,7 @@ TrendRadar 主程序
 
 import argparse
 import os
+import sys
 import webbrowser
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -1638,6 +1639,8 @@ class NewsAnalyzer:
 
 def main():
     """主程序入口"""
+    _make_output_utf8_safe()
+
     parser = argparse.ArgumentParser(
         description="TrendRadar - 热点新闻聚合与分析工具",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1650,11 +1653,14 @@ def main():
 
 示例:
   python -m trendradar                    # 正常运行
+  python -m trendradar --serve            # 启动选题终端 Web 服务（默认 http://127.0.0.1:8090）
   python -m trendradar --show-schedule    # 查看当前调度状态
   python -m trendradar --doctor           # 运行一键体检
   python -m trendradar --test-notification # 测试通知渠道连通性
 """
     )
+    parser.add_argument("--serve", action="store_true", help="启动选题终端（TOPIC TERMINAL）Web 服务")
+    parser.add_argument("--terminal-port", type=int, default=0, help="选题终端监听端口（默认 8090）")
     parser.add_argument("--show-schedule", action="store_true", help="显示当前调度状态")
     parser.add_argument("--doctor", action="store_true", help="运行环境与配置体检")
     parser.add_argument("--test-notification", action="store_true", help="发送测试通知到已配置渠道")
@@ -1667,6 +1673,13 @@ def main():
             ok = run_doctor()
             if not ok:
                 raise SystemExit(1)
+            return
+
+        if args.serve:
+            # 延迟导入：不影响正常管线启动速度
+            from trendradar.webapp.server import run as serve_run
+
+            serve_run(port=args.terminal_port)
             return
 
         config = load_config()
@@ -1709,6 +1722,16 @@ def main():
         print(f"❌ 程序运行错误: {e}")
         if debug_mode:
             raise
+
+
+def _make_output_utf8_safe() -> None:
+    """Windows GBK 控制台打不出 emoji/中文提示时降级替换，避免启动即崩溃"""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            if stream is not None and hasattr(stream, "reconfigure"):
+                stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:  # noqa: BLE001 —— 任何失败都不阻塞启动
+            pass
 
 
 if __name__ == "__main__":

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>选题终端 · TrendRadar</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+<link rel="stylesheet" href="/assets/style.css" />
+</head>
+<body>
+
+<!-- ═══════════ 顶栏 ═══════════ -->
+<header id="topbar" class="glass-card">
+    <div class="tb-left">
+        <div class="tb-brand-icon"><i class="fa-solid fa-satellite-dish"></i></div>
+        <div class="tb-user">
+            <span class="tb-name brand-text" id="tb-nickname">路口大爷</span>
+            <span class="tb-suffix" data-i18n="tt.titleSuffix"></span>
+            <button class="tb-edit-name" id="btn-edit-name" data-i18n-title="tt.editName" title="">
+                <i class="fa-solid fa-pencil"></i>
+            </button>
+        </div>
+    </div>
+
+    <div class="tb-right">
+        <button class="icon-btn" id="lang-toggle-btn" title="Switch to English / 切换到英文">
+            <span id="lang-toggle-label">EN</span>
+        </button>
+        <div class="status-dot-wrap" id="status-wrap">
+            <span class="status-dot red" id="status-dot"></span>
+            <span class="status-label" id="status-label">--</span>
+        </div>
+        <span class="version-badge" id="version-badge">v--</span>
+        <span class="tb-clock" id="tb-clock">----.--.-- --:--:--</span>
+        <button class="icon-btn" id="btn-settings" title="Settings" data-i18n-title="tt.settings">
+            <i class="fa-solid fa-gear"></i>
+        </button>
+    </div>
+</header>
+
+<!-- ═══════════ 三栏主区 ═══════════ -->
+<main id="terminal-main">
+
+    <!-- 左栏：TOP10 + 权威头条 -->
+    <section class="col-left">
+        <div class="glass-card card-pad" id="top10-card">
+            <div class="card-title-row">
+                <h2 class="card-title brand-text" data-i18n="tt.top10Title"></h2>
+            </div>
+            <p class="card-subtitle" data-i18n="tt.top10Subtitle"></p>
+            <div id="top10-progress"></div>
+            <ol id="top10-list" class="list-none p-0 m-0 section-scroll" style="list-style:none;"></ol>
+        </div>
+
+        <div class="glass-card card-pad" id="authority-card">
+            <div class="card-title-row">
+                <h2 class="card-title" data-i18n="tt.authTitle"></h2>
+            </div>
+            <p class="card-subtitle" id="auth-subtitle" data-i18n="tt.authSubtitle"></p>
+            <label class="switch-row">
+                <span data-i18n="tt.interestOnly"></span>
+                <span class="toggle-switch">
+                    <input type="checkbox" id="auth-interest-only" />
+                    <span class="toggle-slider"></span>
+                </span>
+            </label>
+            <div id="auth-stream" class="stream-list section-scroll"></div>
+        </div>
+    </section>
+
+    <!-- 中栏：多平台热榜并列 -->
+    <section class="col-mid">
+        <div class="glass-card card-pad" style="min-height: 60vh;">
+            <div class="card-title-row">
+                <h2 class="card-title" data-i18n="tt.hotTitle"></h2>
+                <span class="hot-col-count ml-auto" id="hot-updated"></span>
+            </div>
+            <p class="card-subtitle" data-i18n="tt.hotSubtitle"></p>
+            <div id="hot-grid" class="hot-columns"></div>
+        </div>
+    </section>
+
+    <!-- 右栏：详情研判面板 -->
+    <aside class="glass-card card-pad col-right" id="detail-panel">
+        <div class="detail-header">
+            <h3 class="detail-h-title" data-i18n="tt.detailTitle"></h3>
+            <button class="detail-close sr-only" id="detail-close"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div id="detail-body">
+            <div class="empty-state">
+                <i class="fa-solid fa-hand-pointer"></i>
+                <span data-i18n="tt.detailPick"></span>
+            </div>
+        </div>
+    </aside>
+
+</main>
+
+<!-- ═══════════ 设置弹窗 ═══════════ -->
+<div class="modal-overlay hidden" id="settings-modal">
+    <div class="modal-box" role="dialog" aria-modal="true">
+        <h3 class="modal-title" data-i18n="tt.setTitle"></h3>
+
+        <div class="form-row">
+            <label class="form-label" for="set-nickname" data-i18n="tt.setNickname"></label>
+            <input class="form-input" id="set-nickname" type="text" maxlength="30" />
+            <div class="form-hint" data-i18n="tt.setNicknameHint"></div>
+        </div>
+
+        <div class="form-row">
+            <label class="form-label" data-i18n="tt.setKeywords"></label>
+            <div class="tag-input-box" id="tag-box">
+                <input class="tag-input-el" id="tag-input" type="text"
+                       placeholder="美联储 ⏎" />
+            </div>
+            <div class="form-hint" data-i18n="tt.setKeywordsHint"></div>
+        </div>
+
+        <div class="form-row">
+            <label class="form-label" for="set-interests" data-i18n="tt.setInterests"></label>
+            <textarea class="form-input" id="set-interests" data-i18n-placeholder="tt.setInterestsPlaceholder"></textarea>
+            <div class="form-hint" data-i18n="tt.setInterestsHint"></div>
+        </div>
+
+        <div class="form-row">
+            <label class="form-label" data-i18n="tt.setSources"></label>
+            <div class="pref-grid" id="pref-grid"></div>
+            <div class="form-hint" data-i18n="tt.setSourcesHint"></div>
+        </div>
+
+        <div class="modal-actions">
+            <button class="btn btn-ghost" id="btn-cancel-settings" data-i18n="tt.cancelBtn"></button>
+            <button class="btn btn-primary" id="btn-save-settings" data-i18n="tt.saveBtn"></button>
+        </div>
+    </div>
+</div>
+
+<div id="toast-wrap"></div>
+
+<script src="/assets/i18n.js"></script>
+<script src="/assets/app.js"></script>
+</body>
+</html>

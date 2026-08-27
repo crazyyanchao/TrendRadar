@@ -3546,6 +3546,72 @@ Cherry Studio provides GUI config interface, 5-minute quick deployment, complex 
 
 <br>
 
+## 📡 AI Topic Terminal (TOPIC TERMINAL)
+
+> **Light glassmorphism × fintech aesthetics × personal interest engine**: an AI topic dashboard with customizable nickname and watch scope. All-network hotlist data is filtered and scored against your interests to produce a personal "Top 10 Topics of the Day", complemented by side-by-side multi-platform hotlists and per-topic deep research — a "different list for every person" topic workstation.
+
+### Modules
+
+| Module | Capability |
+|---|---|
+| Top navigation | Editable nickname + live clock + data-source status light (green/yellow/red) + version badge + settings entry |
+| Top 10 topics | Hotness × freshness × interest match → AI composite score 0-100, ring gauge, event-type tags, 🔥 match badges |
+| Authoritative headlines | RSS feeds + finance-oriented hotlists merged into a 24-hour stream, with an "interest matches only" toggle |
+| Multi-platform hotlists | Weibo / Zhihu / Douyin side by side; green dots mark interest matches |
+| Research panel | Click any topic → AI summary / key elements / actionability / exposure forecast / suggested angles / risks / why-it-matches-you |
+| Personalization | Nickname, watch keywords, natural-language interest description, source preferences; saving triggers an immediate rescore |
+| Status management | Featured / To read / Done states, auto-saved personal notes, Markdown export |
+
+### How to Start
+
+**Option 1: local Python**
+
+```bash
+# Recommended entry (defaults to http://127.0.0.1:8090)
+python -m trendradar --serve
+
+# Or via the standalone module entry
+uv run python -m trendradar.webapp --open-browser
+```
+
+**Option 2: Docker**
+
+In Docker cron mode the terminal starts automatically (disable with `TERMINAL_ENABLED=false`), available at `http://localhost:8090`.
+
+Manual management inside the container:
+
+```bash
+docker exec -it trendradar python manage.py start_terminal    # start
+docker exec -it trendradar python manage.py terminal_status   # status
+docker exec -it trendradar python manage.py stop_terminal     # stop
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `TERMINAL_PORT` | `8090` | Listen port (8080 is taken by the report web server) |
+| `TERMINAL_HOST` | `0.0.0.0` in containers, `127.0.0.1` locally | Bind address |
+| `TERMINAL_TOKEN` | empty | When set, all write endpoints require the `X-Terminal-Token` header |
+| `TERMINAL_AUTO_RESCORE` | `1` | Set `0` to disable automatic rescoring on data refresh |
+
+### Notes & FAQ
+
+- **AI scoring requires model config**: set a valid `model` / `api_key` under `ai:` in config.yaml (or env `AI_API_KEY`). Without it the terminal falls back to keyword mode — browsing works, but no AI scoring or deep research.
+- **First scoring may take a while**: extracting interest tags calls the LLM once; per-item classification is incremental per day and speeds up over time.
+- **Where profiles live**: terminal settings are stored under `output/terminal/` and never written back to `config/` (read-only mount in Docker).
+- **Red status light**: no crawl record today or data older than 24 hours.
+- **Dev preview (no crawl needed)**: the repo ships sample databases (2025-12-21 ~ 2025-12-27 and 2026-08-27); anchor the terminal to a sample date:
+  ```bash
+  # Linux / macOS
+  TERMINAL_DATE=2025-12-27 python -m trendradar.webapp --open-browser
+  # Windows PowerShell
+  $env:TERMINAL_DATE="2025-12-27"; python -m trendradar.webapp --open-browser
+  ```
+- **Remote storage users**: enable `storage.pull.enabled`, otherwise the local terminal has no data.
+
+<br>
+
 ## 🔌 MCP Clients
 
 TrendRadar MCP service supports standard Model Context Protocol (MCP), can connect to various AI clients supporting MCP for smart analysis.

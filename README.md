@@ -63,8 +63,8 @@
 |   |   |   |
 |:---:|:---:|:---:|
 | [🚀 **快速开始**](#-快速开始) | [AI 智能分析](#-ai-智能分析) | [⚙️ **配置详解**](#配置详解) |
-| [Docker部署](#6-docker-部署) / [本地部署](#local-deploy) | [MCP客户端](#-mcp-客户端) | [📝 **更新日志**](#-更新日志) |
-| [🎯 **核心功能**](#-核心功能) | [☕ **支持项目**](#-支持项目) | [📚 **项目相关**](#-项目相关) |
+| [Docker部署](#6-docker-部署) / [本地部署](#local-deploy) | [📡 **选题终端**](#-ai-选题终端topic-terminal) | [📝 **更新日志**](#-更新日志) |
+| [🎯 **核心功能**](#-核心功能) | [MCP客户端](#-mcp-客户端) / [☕ 支持项目](#-支持项目) | [📚 **项目相关**](#-项目相关) |
 
 </div>
 
@@ -2770,6 +2770,8 @@ TrendRadar 提供两个独立的 Docker 镜像，可根据需求选择部署：
    | `config/custom/` | **用户自定义扩展** | 按需 | `custom/ai/` 放自定义 AI 提示词，`custom/keyword/` 放自定义关键词文件 |
    | `docker/.env` | **敏感信息 + Docker 特有配置** | 低 | webhook URLs、API Key、S3 密钥、定时任务等，**不会被 git 追踪** |
 
+   > 💡 **首次部署**：从模板复制一份再填入自己的密钥 —— `cp docker/.env.example docker/.env`（Windows 用 `copy`）
+
    > 💡 **分工要点**：
    > - **功能行为** → 改 `config.yaml`（如开启/关闭某个平台、调整推送模式）
    > - **关注内容** → 改 `frequency_words.txt`（如添加新的关注关键词）
@@ -3544,6 +3546,73 @@ Cherry Studio 提供 GUI 配置界面，5 分钟快速部署，复杂的部分�
 > 💡 **提示**：实际不建议一次性问多个问题。如果你选择的 AI 模型连下图的按顺序调用都无法做到，建议换一个。
 
 <img src="/_image/ai4.png" alt="mcp 使用效果图" width="600">
+
+<br>
+
+## 📡 AI 选题终端（TOPIC TERMINAL）
+
+> **浅色玻璃态 × 金融科技感 × 个性化兴趣引擎**：一个可自定义昵称和关注范围的 AI 选题看板。全网热榜数据经你的兴趣过滤与 AI 打分后，生成专属「今日综合选题 TOP10」，配合多平台热榜横向对比与单条选题深度研判，构成"千人千面"的选题工作台。
+
+### 功能总览
+
+| 模块 | 能力 |
+|---|---|
+| 顶部导航栏 | 可编辑个性昵称 + 实时时钟 + 数据源状态灯（绿/黄/红）+ 版本号 + 设置入口 |
+| 今日综合选题 TOP10 | 热度 × 时效 × 与你兴趣的匹配度 → AI 综合 0-100 分排序，环形评分、事件类型标签、🔥匹配徽章 |
+| 权威新闻源头条 | RSS 订阅 + 财经类热榜合并的最近 24 小时时间流，可一键「仅显示与我兴趣相关」 |
+| 多平台实时热榜 | 微博 / 知乎 / 抖音等并列展示，绿色圆点标注兴趣匹配项，支持跨平台对比 |
+| 详情研判面板 | 点击任一选题 → AI 摘要 / 关键要素 / 可操作性 / 曝光预判 / 切入点建议 / 风险提示 / 为什么推荐给你 |
+| 个性化设置 | 昵称、关注关键词、兴趣描述（自然语言）、数据源偏好；保存后立即重新生成选题榜 |
+| 选题状态管理 | 推荐 / 待看 / 已阅 三态标记，个人笔记自动保存，支持导出 Markdown |
+
+### 启动方式
+
+**方式一：本地 Python**
+
+```bash
+# 推荐入口（默认 http://127.0.0.1:8090）
+python -m trendradar --serve
+
+# 或独立模块入口
+uv run python -m trendradar.webapp --open-browser
+```
+
+**方式二：Docker**
+
+Docker cron 模式下终端随 `entrypoint` 自动启动（可用环境变量 `TERMINAL_ENABLED=false` 关闭），访问 `http://localhost:8090`。
+
+容器内也可手动管理：
+
+```bash
+docker exec -it trendradar python manage.py start_terminal    # 启动
+docker exec -it trendradar python manage.py terminal_status   # 状态
+docker exec -it trendradar python manage.py stop_terminal     # 停止
+```
+
+### 相关环境变量
+
+| 变量 | 默认值 | 说明 |
+|---|---|---|
+| `TERMINAL_PORT` | `8090` | 监听端口（8080 已被报告 Web 服务器占用） |
+| `TERMINAL_HOST` | 容器内 `0.0.0.0`，本地 `127.0.0.1` | 监听地址 |
+| `TERMINAL_TOKEN` | 空 | 设置后所有写接口需携带请求头 `X-Terminal-Token` |
+| `TERMINAL_AUTO_RESCORE` | `1` | 设为 `0` 关闭随读取接口的自动重打分 |
+
+### 说明与常见问题
+
+- **AI 打分依赖模型配置**：需在 `config.yaml` 的 `ai:` 段配置有效的 `model` / `api_key`（或环境变量 `AI_API_KEY`）。不可用时终端自动降级为关键词引擎，仍可浏览与筛选，但无 AI 打分与深度研判。
+- **首次打分可能需要等待**：兴趣标签提取需调用 LLM；此后逐条分类按天增量进行，越用越快。保存新兴趣描述会立即触发重新生成。
+- **兴趣数据落在哪里**：终端的个性化配置保存在 `output/terminal/` 下（profile.json 等），不写回 `config/` 目录——因为 Docker 中 config 通常以只读挂载。
+- **状态灯为红色**：当天没有抓取记录或数据超过 24 小时未更新。确认定时任务已运行，或执行一次 `python -m trendradar`。
+- **开发预览（无需抓取）**：仓库内置了 2025-12-21 ~ 2025-12-27 与 2026-08-27 的样例数据库，可用调试锚点直接查看页面效果：
+  ```bash
+  # Linux / macOS
+  TERMINAL_DATE=2025-12-27 python -m trendradar.webapp --open-browser
+  # Windows PowerShell
+  $env:TERMINAL_DATE="2025-12-27"; python -m trendradar.webapp --open-browser
+  ```
+- **远程存储用户**：使用 S3 远端存储时请开启 `storage.pull.enabled`，否则本地终端无数据可读。
+- 原始设计稿见 [docs/design/选题终端设计文档.md](docs/design/选题终端设计文档.md)。
 
 <br>
 

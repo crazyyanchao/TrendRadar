@@ -17,6 +17,12 @@ WEBSERVER_PORT = _raw_port if 1 <= _raw_port <= 65535 else 8080
 WEBSERVER_DIR = "/app/output"
 WEBSERVER_PID_FILE = "/tmp/webserver.pid"
 
+# 选题终端（TOPIC TERMINAL）：工作目录必须是 /app（读取 config/ 与 output/）
+_raw_term_port = int(os.environ.get("TERMINAL_PORT", "8090"))
+TERMINAL_PORT = _raw_term_port if 1 <= _raw_term_port <= 65535 else 8090
+TERMINAL_PID_FILE = "/tmp/terminal.pid"
+APP_WORKDIR = "/app"
+
 
 def manual_run():
     """手动执行一次爬虫"""
@@ -642,6 +648,135 @@ def webserver_status():
         print(f"  ❌ 状态检查失败: {e}")
 
 
+def _is_expected_terminal_process(pid: int) -> bool:
+    """检查 pid 是否是当前端口的 trendradar.webapp 进程。"""
+    cmdline = _read_proc_cmdline(pid)
+    if not cmdline:
+        return False
+    return "trendradar.webapp" in cmdline and str(TERMINAL_PORT) in cmdline
+
+
+def _is_terminal_running(pid: int) -> bool:
+    """检查终端进程是否真正在运行（进程存在 + /api/status 可达）。"""
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+
+    if not _is_expected_terminal_process(pid):
+        return False
+
+    try:
+        import urllib.request
+
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{TERMINAL_PORT}/api/status", timeout=3,
+        ) as resp:
+            return resp.status == 200
+    except Exception:
+        return False
+
+
+def start_terminal():
+    """启动选题终端 Web 服务"""
+    print(f"📡 启动选题终端 (端口: {TERMINAL_PORT})...")
+    print(f"  🔒 安全提示：容器内监听 0.0.0.0；写接口可用 TERMINAL_TOKEN 保护")
+
+    if Path(TERMINAL_PID_FILE).exists():
+        try:
+            with open(TERMINAL_PID_FILE, 'r') as f:
+                old_pid = int(f.read().strip())
+
+            if _is_terminal_running(old_pid):
+                print(f"  ⚠️ 选题终端已在运行 (PID: {old_pid})")
+                print(f"  💡 访问: http://localhost:{TERMINAL_PORT}")
+                print("  💡 停止服务: python manage.py stop_terminal")
+                return
+
+            _terminate_webserver_process(old_pid, require_expected=False)
+            os.remove(TERMINAL_PID_FILE)
+            print("  ℹ️ 检测到失效的 PID 文件，已清理")
+        except Exception as e:
+            print(f"  ⚠️ 清理旧的 PID 文件: {e}")
+            try:
+                os.remove(TERMINAL_PID_FILE)
+            except Exception:
+                pass
+
+    try:
+        process = subprocess.Popen(
+            [sys.executable, '-m', 'trendradar.webapp',
+             '--host', '0.0.0.0', '--port', str(TERMINAL_PORT)],
+            cwd=APP_WORKDIR,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        time.sleep(2)
+
+        if process.poll() is None:
+            with open(TERMINAL_PID_FILE, 'w') as f:
+                f.write(str(process.pid))
+            print(f"  ✅ 选题终端已启动 (PID: {process.pid})")
+            print(f"  🌐 访问地址: http://localhost:{TERMINAL_PORT}")
+            print("  💡 停止服务: python manage.py stop_terminal")
+        else:
+            print("  ❌ 选题终端启动失败（查看 docker logs trendradar 排查）")
+    except Exception as e:
+        print(f"  ❌ 启动失败: {e}")
+
+
+def stop_terminal():
+    """停止选题终端 Web 服务"""
+    print("🛑 停止选题终端...")
+
+    if not Path(TERMINAL_PID_FILE).exists():
+        print("  ℹ️ 选题终端未运行")
+        return
+
+    try:
+        with open(TERMINAL_PID_FILE, 'r') as f:
+            pid = int(f.read().strip())
+        _terminate_webserver_process(pid, require_expected=False)
+        if Path(TERMINAL_PID_FILE).exists():
+            os.remove(TERMINAL_PID_FILE)
+    except Exception as e:
+        print(f"  ❌ 停止失败: {e}")
+        try:
+            os.remove(TERMINAL_PID_FILE)
+        except Exception:
+            pass
+
+
+def terminal_status():
+    """查看选题终端状态"""
+    print("📡 选题终端状态:")
+
+    if not Path(TERMINAL_PID_FILE).exists():
+        print("  ⭕ 未运行")
+        print("  💡 启动服务: python manage.py start_terminal")
+        return
+
+    try:
+        with open(TERMINAL_PID_FILE, 'r') as f:
+            pid = int(f.read().strip())
+
+        if _is_terminal_running(pid):
+            print(f"  ✅ 运行中 (PID: {pid})")
+            print(f"  🌐 访问地址: http://localhost:{TERMINAL_PORT}")
+            print("  💡 停止服务: python manage.py stop_terminal")
+        else:
+            print("  ⭕ 未运行 (PID 文件存在但进程不可用)")
+            try:
+                os.remove(TERMINAL_PID_FILE)
+                print(f"  🧹 清理失效 PID 文件 (PID: {pid})")
+            except Exception:
+                pass
+            print("  💡 启动服务: python manage.py start_terminal")
+    except Exception as e:
+        print(f"  ❌ 状态检查失败: {e}")
+
+
 def show_help():
     """显示帮助信息"""
     help_text = """
@@ -657,6 +792,9 @@ def show_help():
   start_webserver  - 启动 Web 服务器托管 output 目录
   stop_webserver   - 停止 Web 服务器
   webserver_status - 查看 Web 服务器状态
+  start_terminal   - 启动选题终端（TOPIC TERMINAL）
+  stop_terminal    - 停止选题终端
+  terminal_status  - 查看选题终端状态
   help             - 显示此帮助
 
 📖 使用示例:
@@ -695,6 +833,12 @@ def show_help():
      - 停止: stop_webserver
      - 状态: webserver_status
      - 访问: http://localhost:8080
+
+  6. 选题终端管理:
+     - 启动: start_terminal
+     - 停止: stop_terminal
+     - 状态: terminal_status
+     - 访问: http://localhost:8090（可用 TERMINAL_PORT 覆盖）
 """
     print(help_text)
 
@@ -715,6 +859,9 @@ def main():
         "start_webserver": start_webserver,
         "stop_webserver": stop_webserver,
         "webserver_status": webserver_status,
+        "start_terminal": start_terminal,
+        "stop_terminal": stop_terminal,
+        "terminal_status": terminal_status,
         "help": show_help,
     }
 

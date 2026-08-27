@@ -61,16 +61,25 @@ class AIFilterPipeline:
                     pass
         return result
 
-    def run(self, interests_file: Optional[str] = None) -> Optional[AIFilterResult]:
+    def run(
+        self,
+        interests_file: Optional[str] = None,
+        interests_content: Optional[str] = None,
+    ) -> Optional[AIFilterResult]:
         """
         执行 AI 智能筛选完整流程
 
-        1. 读取兴趣描述文件，计算 hash
+        1. 读取兴趣描述文件（或使用外部注入的内容），计算 hash
         2. 对比数据库 prompt_hash，决定是否重新提取标签
         3. 收集待分类新闻（去重）
         4. 按 batch_size 分组调用 AI 分类
         5. 保存结果
         6. 查询 active 结果，按标签分组返回
+
+        Args:
+            interests_file: 兴趣描述文件名（config/ 或 config/custom/ai/ 下）
+            interests_content: 直接注入的兴趣描述内容。非空时优先生效，
+                不再读取文件——供选题终端等场景在 config 目录只读时动态传入个性化兴趣。
         """
         filter_config = self._filter_config
 
@@ -88,8 +97,9 @@ class AIFilterPipeline:
             print(f"[AI筛选][DEBUG] prompt_file={filter_config.get('PROMPT_FILE', 'prompt.txt')}")
             print(f"[AI筛选][DEBUG] extract_prompt_file={filter_config.get('EXTRACT_PROMPT_FILE', 'extract_prompt.txt')}")
 
-        # 1. 读取兴趣描述
-        interests_content = ai_filter.load_interests_content(configured_interests)
+        # 1. 读取兴趣描述（支持外部直接注入内容；否则从配置文件加载）
+        if not interests_content:
+            interests_content = ai_filter.load_interests_content(configured_interests)
         if not interests_content:
             return AIFilterResult(success=False, error="兴趣描述文件为空或不存在")
 

@@ -41,6 +41,12 @@ case "${RUN_MODE:-cron}" in
     echo "🌐 启动 Web 服务器..."
     python manage.py start_webserver
 
+    # 启动选题终端（可用 TERMINAL_TERMINAL_ENABLED=false 关闭）
+    if [ "${TERMINAL_ENABLED:-true}" = "true" ]; then
+        echo "📡 启动选题终端..."
+        python manage.py start_terminal || echo "⚠️ 选题终端启动失败，不影响爬虫主流程"
+    fi
+
     echo "⏰ 启动supercronic: $CRON_EXPR"
     echo "🎯 supercronic 将作为 PID 1 运行"
 
