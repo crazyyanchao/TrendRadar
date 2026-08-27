@@ -135,6 +135,7 @@
         ['tt.retry', '重试', 'Retry'],
         ['tt.justNow', '刚刚', 'just now'],
         ['tt.minAgo', '{0} 分钟前', '{0} min ago'],
+        ['tt.yesterday', '昨日', 'Yesterday'],
     ]);
 
     // ═══════════════════════════════════════

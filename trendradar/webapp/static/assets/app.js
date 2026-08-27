@@ -412,21 +412,19 @@
         }
 
         box.innerHTML = items.map(function (item) {
-            // 完整时间：YYYY-MM-DD HH:MM(:SS)；热榜条目仅有 HH:MM 时补当天日期
-            var raw = item.published_at ? String(item.published_at).trim() : '';
-            var timeText;
-            if (/^\d{4}-\d{2}-\d{2}/.test(raw)) {
-                timeText = raw.replace('T', ' ').replace(/(\.\d+)?([+-]\d{2}:\d{2}|Z)$/, '');
-                if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(timeText)) timeText += ':00';
-            } else if (/^\d{2}:\d{2}$/.test(raw)) {
-                timeText = (State.stream && State.stream.date ? State.stream.date + ' ' : '') + raw;
-            } else {
-                timeText = raw || '--';
-            }
+            /**
+             * 紧凑时间显示：
+             * 今天     → HH:MM:SS
+             * 昨天     → 昨日 HH:MM
+             * 更早     → MM-DD HH:MM
+             * 完整精确值（年月日时分秒）悬停 title 可见。
+             */
+            var full = compactToFullTime(item.published_at);
+            var timeText = smartShortTime(full, item.source_type, item.published_at);
             var isRss = item.source_type === 'rss';
             return (
                 '<div class="stream-item' + (animate ? ' fade-item' : '') + (State.selectedKey === item.key ? ' active' : '') + '" data-key="' + esc(item.key) + '">' +
-                  '<span class="stream-time">' + esc(timeText) + '</span>' +
+                  '<span class="stream-time" title="' + esc(full || timeText) + '">' + esc(timeText) + '</span>' +
                   '<span class="stream-body">' +
                     '<div class="stream-title">' + markKeywords(item.title) + '</div>' +
                     '<div class="stream-meta">' +
@@ -444,6 +442,38 @@
         }).join('');
 
         addFadeItems(box);
+    }
+
+    /** 把各种原始时间归一化为 "YYYY-MM-DD HH:MM[:SS]"；解析失败返回 '' */
+    function compactToFullTime(raw) {
+        raw = (raw == null ? '' : String(raw)).trim();
+        if (!raw) return '';
+        var s = raw.replace('T', ' ').replace(/(\.\d+)?([+-]\d{2}:\d{2}|Z)$/, '');
+        if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(s)) s += ':00';
+        if (/^\d{2}:\d{2}(:\d{2})?$/.test(s)) {
+            // 仅时分(秒)：热榜条目——补数据日日期
+            s = ((State.stream && State.stream.date) || '') + ' ' + (s.length === 5 ? s + ':00' : s);
+        }
+        return /^\d{4}/.test(s) ? s : '';
+    }
+
+    /** 依据当前时刻选择紧凑展示：今天只显时分秒，昨天/更早补最小必要日期 */
+    function smartShortTime(full, sourceType, fallbackRaw) {
+        if (!full) return fallbackRaw || '--';
+        var m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})(?::(\d{2}))?$/.exec(full);
+        if (!m) return full;
+        var y = m[1], mo = m[2], d = m[3], hh = m[4], mi = m[5], ss = m[6] || '00';
+        var today = new Date();
+        function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+        var tY = today.getFullYear(), tM = pad2(today.getMonth() + 1), tD = pad2(today.getDate());
+        if (y === String(tY) && mo === tM && d === tD) {
+            return hh + ':' + mi + ':' + ss;                 // 今天：仅时分秒
+        }
+        var yesterday = new Date(today.getTime() - 86400000);
+        if (y === String(yesterday.getFullYear()) && mo === pad2(yesterday.getMonth() + 1) && d === pad2(yesterday.getDate())) {
+            return t('tt.yesterday') + ' ' + hh + ':' + mi;  // 昨天
+        }
+        return mo + '-' + d + ' ' + hh + ':' + mi;           // 更早
     }
 
     function addFadeItems(box) {
