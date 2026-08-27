@@ -226,11 +226,14 @@ def parse_research_json(raw: str) -> Dict[str, Any]:
             return [str(v).strip() for v in value if str(v).strip()]
         return []
 
-    hours = parsed.get("estimated_hours")
+    minutes = parsed.get("estimated_minutes")
     try:
-        hours = round(float(hours), 2) if hours is not None else None
+        minutes = round(float(minutes), 1) if minutes is not None else None
     except (TypeError, ValueError):
-        hours = None
+        minutes = None
+    if minutes is not None:
+        # 兜底：成片时长夹取到 1~120 分钟，取整数
+        minutes = max(1, min(int(round(minutes)), 120))
 
     return {
         "summary": str(parsed.get("summary", "")).strip(),
@@ -243,7 +246,7 @@ def parse_research_json(raw: str) -> Dict[str, Any]:
             "tier": str(exposure.get("tier", "")),
             "basis": str(exposure.get("basis", "")),
         },
-        "estimated_hours": hours,
+        "estimated_minutes": minutes,
         "match_explanation": str(parsed.get("match_explanation", "")).strip(),
         "angles": _str_list(parsed.get("angles"))[:5],
         "opportunities": _str_list(parsed.get("opportunities"))[:4],

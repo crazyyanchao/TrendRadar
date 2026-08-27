@@ -23,7 +23,7 @@ from trendradar.context import AppContext
 
 from trendradar.webapp.reader import interests_hash, parse_dt, topic_key
 from trendradar.webapp.store import TERMINAL_INTERESTS_FILE, TerminalStore
-from trendradar.webapp.tasks import TaskQueue
+from trendradar.webapp.tasks import TaskHandle, TaskQueue
 
 MERGE_THRESHOLD = 0.72          # 标题相似度合并阈值（SequenceMatcher ratio）
 AUTO_RESCORE_INTERVAL = 1800    # 自动重打分冷却（秒），一天至多约 48 次、由快照新鲜度再收敛
@@ -252,6 +252,9 @@ class ScoringService:
             saved = statuses.get(item["key"]) or {}
             item["topic_status"] = saved.get("status", "")
         snapshot["engine"] = snapshot.get("engine") or self.engine
+        # 选题为空时不携带生成时间（空快照的 generated_at 不代表真正生成）
+        if not snapshot.get("items"):
+            snapshot["generated_at"] = ""
         return snapshot
 
 

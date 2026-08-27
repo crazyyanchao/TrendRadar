@@ -215,6 +215,11 @@ def api_hotlists(app: TerminalApp, params: dict, body: dict | None) -> dict:
             entry = statuses.get(item["key"])
             item["topic_status"] = entry["status"] if entry else ""
 
+    profile = app.store.load_profile()
+    data["match_stats"] = app.reader.interest_match_stats(
+        date or None, keywords=profile.get("keywords", [])
+    )
+
     if app.auto_rescore and app.scorer is not None and not date:
         try:
             app.scorer.maybe_auto_rescore(data.get("fetched_at", ""))

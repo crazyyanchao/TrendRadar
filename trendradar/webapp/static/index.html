@@ -15,7 +15,7 @@
     <div class="tb-left">
         <div class="tb-brand-icon"><i class="fa-solid fa-satellite-dish"></i></div>
         <div class="tb-user">
-            <span class="tb-name brand-text" id="tb-nickname">路口大爷</span>
+            <span class="tb-name brand-text" id="tb-nickname">隔岸观火</span>
             <span class="tb-suffix" data-i18n="tt.titleSuffix"></span>
             <button class="tb-edit-name" id="btn-edit-name" data-i18n-title="tt.editName" title="">
                 <i class="fa-solid fa-pencil"></i>
@@ -31,7 +31,8 @@
             <span class="status-dot red" id="status-dot"></span>
             <span class="status-label" id="status-label">--</span>
         </div>
-        <span class="version-badge" id="version-badge">v--</span>
+        <span class="src-stats" id="src-stats"></span>
+        <span class="src-stats" id="match-stats"></span>
         <span class="tb-clock" id="tb-clock">----.--.-- --:--:--</span>
         <button class="icon-btn" id="btn-settings" title="Settings" data-i18n-title="tt.settings">
             <i class="fa-solid fa-gear"></i>
@@ -47,8 +48,10 @@
         <div class="glass-card card-pad" id="top10-card">
             <div class="card-title-row">
                 <h2 class="card-title brand-text" data-i18n="tt.top10Title"></h2>
+                <span class="ml-auto"></span>
+                <button class="btn btn-ghost btn-mini" id="btn-top10-rescore"><i class="fa-solid fa-rotate"></i><span data-i18n="tt.rescore"></span></button>
             </div>
-            <p class="card-subtitle" data-i18n="tt.top10Subtitle"></p>
+            <p class="card-subtitle"><span data-i18n="tt.top10Subtitle"></span><span class="top10-gen" id="top10-gen"></span></p>
             <div id="top10-progress"></div>
             <ol id="top10-list" class="list-none p-0 m-0 section-scroll" style="list-style:none;"></ol>
         </div>

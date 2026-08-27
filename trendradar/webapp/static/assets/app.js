@@ -110,6 +110,26 @@
         return t('tt.minAgo', minutesAgo);
     }
 
+    /** 把文件名风格的 "21-06"（Windows 文件名不允许冒号）归一化为显示用 "21:06" */
+    function normalizeClock(raw) {
+        if (!raw) return '';
+        var s = String(raw).trim();
+        var m = /^(\d{1,2})-(\d{2})$/.exec(s);
+        return m ? m[1] + ':' + m[2] : s;
+    }
+
+    /** 基于热榜数据日 + 抓取时刻，追加 "· 3 分钟前" 这类实时新鲜度提示；太久远/未来则省略 */
+    function hotFreshSuffix(time) {
+        var m = /^(\d{1,2}):(\d{2})$/.exec(time);
+        var dateStr = (State.hotlists && State.hotlists.date) || '';
+        if (!m || !dateStr) return '';
+        var d = new Date(dateStr + 'T' + time + ':00');
+        if (isNaN(d.getTime())) return '';
+        var mins = Math.round((Date.now() - d.getTime()) / 60000);
+        if (mins < 0 || mins >= 60) return '';
+        return ' · ' + timeAgoLabel(mins);
+    }
+
     // ═══════════════════════════════════════
     //  全局状态
     // ═══════════════════════════════════════
@@ -136,8 +156,8 @@
     function loadBootstrap() {
         return apiGet('/api/bootstrap').then(function (data) {
             State.bootstrap = data;
-            renderVersion(data.version);
             renderStatus(data.status);
+            renderSourceStats();
             document.title = (data.nickname || '') + t('tt.titleSuffix');
         });
     }
@@ -162,6 +182,8 @@
     function reloadHotlists(silent) {
         return apiGet('/api/hotlists?limit=30').then(function (data) {
             State.hotlists = data;
+            State.matchStats = data.match_stats || null;
+            renderMatchStats();
             rebuildItemIndex();
             renderHotGrid(!silent);
             renderHotUpdated(data.fetched_at);
@@ -208,6 +230,7 @@
             esc(t('tt.loadFail', message)) +
             '<div style="margin-top:8px;"><button class="btn btn-ghost btn-mini" onclick="location.reload()">' + esc(t('tt.retry')) + '</button></div>' +
             '</div>';
+        if (container.id === 'hot-grid') layoutHotGrid();
     }
 
     // ═══════════════════════════════════════
@@ -238,9 +261,24 @@
         if (el) el.title = '';
     }
 
-    function renderVersion(version) {
-        var badge = $('#version-badge');
-        if (badge && version) badge.textContent = 'v' + version;
+    /** 顶部订阅统计：数据源总数 · 平台数 · RSS 数 */
+    function renderSourceStats() {
+        var el = $('#src-stats');
+        if (!el) return;
+        var b = State.bootstrap;
+        if (!b) { el.textContent = ''; return; }
+        var plats = (b.platforms || []).length;
+        var feeds = (b.feeds || []).length;
+        el.textContent = t('tt.srcStats', [plats + feeds, plats, feeds]);
+    }
+
+    /** 顶部兴趣命中统计：热榜命中 X/Y · RSS 命中 X/Y（数据随 /api/hotlists 每 5 分钟刷新） */
+    function renderMatchStats() {
+        var el = $('#match-stats');
+        if (!el) return;
+        var s = State.matchStats;
+        if (!s) { el.textContent = ''; return; }
+        el.textContent = t('tt.matchStats', [s.hotlist_matched || 0, s.hotlist_total || 0, s.rss_matched || 0, s.rss_total || 0]);
     }
 
     function renderStatus(status) {
@@ -251,16 +289,26 @@
         dot.className = 'status-dot ' + status.level;
 
         var map = { green: 'tt.statusOk', yellow: 'tt.statusWarn', red: 'tt.statusDown' };
-        label.textContent = t(map[status.level] || 'tt.statusWarn');
+        // 当天尚未抓取（platform_total=0）且判定为黄 → 「数据略旧」而非「部分异常」
+        var labelText = (status.level === 'yellow' && !status.platform_total)
+            ? t('tt.statusStale')
+            : t(map[status.level] || 'tt.statusWarn');
+
+        // 分类型计数：平台 X/Y · RSS X/Y（比合计的「正常 X/异常 Y」更直观）
+        var parts = [];
+        if (status.platform_total) parts.push(t('tt.platform') + ' ' + status.platform_ok + '/' + status.platform_total);
+        if (status.rss_total) parts.push('RSS ' + status.rss_ok + '/' + status.rss_total);
+        if (parts.length) labelText += ' · ' + parts.join(' · ');
+        label.textContent = labelText;
 
         var detail = [];
         if (status.platform_total) detail.push('热榜 ' + status.platform_ok + '/' + status.platform_total);
         if (status.rss_total) detail.push('RSS ' + status.rss_ok + '/' + status.rss_total);
-        if (status.last_crawl) detail.push(t('tt.hotUpdated', status.last_crawl));
+        if (status.last_crawl) detail.push(t('tt.hotUpdated', normalizeClock(status.last_crawl)));
         if (status.last_available_date && status.last_available_date !== status.date) {
             detail.push('最新数据日: ' + status.last_available_date);
         }
-        wrap.setAttribute('title', label.textContent + '\n' + detail.join('\n'));
+        wrap.setAttribute('title', labelText + '\n' + detail.join('\n'));
     }
 
     function bindTopbarEvents() {
@@ -295,9 +343,11 @@
         input.select();
 
         function commit(save) {
+            // 先置空标记，防止 input.remove() 触发的 blur 再次进入 commit
+            if (!span.dataset.editing) return;
+            span.dataset.editing = '';
             var value = input.value.trim();
             input.remove();
-            delete span.dataset.editing;
             span.style.display = '';
             if (save && value && value !== State.profile.nickname) {
                 saveProfile({ nickname: value }).catch(function (err) {
@@ -308,10 +358,10 @@
             }
         }
         input.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter') commit(true);
-            if (e.key === 'Escape') commit(false);
+            if (e.key === 'Enter') { e.preventDefault(); commit(true); }
+            if (e.key === 'Escape') { e.preventDefault(); commit(false); }
         });
-        input.addEventListener('blur', function () { commit(false); });
+        input.addEventListener('blur', function () { commit(true); });  // 失焦即保存，Esc 取消
     }
 
     // ═══════════════════════════════════════
@@ -321,6 +371,7 @@
     function renderTop10() {
         var listEl = $('#top10-list');
         var progressEl = $('#top10-progress');
+        var genEl = $('#top10-gen');
         var items = (State.top10 && State.top10.items) || [];
 
         if (State.activeTaskId) {
@@ -332,10 +383,19 @@
         }
 
         if (!items.length) {
+            // 选题为空：不展示生成时间（空快照的 generated_at 不代表真正生成）
+            if (genEl) genEl.textContent = '';
             listEl.innerHTML =
                 '<div class="empty-state"><i class="fa-solid fa-crown"></i><span>' +
                 esc(t('tt.top10Empty')) + '</span></div>';
             return;
+        }
+
+        // 生成时间（快照 generated_at，如 2026-08-27 22:33:52 → 显示 22:33）
+        if (genEl) {
+            var gt = (State.top10 && State.top10.generated_at) || '';
+            var hm = /(\d{2}):(\d{2}):\d{2}/.exec(gt);
+            genEl.textContent = hm ? t('tt.top10Gen', hm[1] + ':' + hm[2]) : '';
         }
 
         listEl.innerHTML = items.map(function (item, idx) {
@@ -353,12 +413,12 @@
                   '<span class="top-mid">' +
                     '<span class="top-title-line">' +
                       '<span class="top-title" title="' + esc(item.title) + '">' + markKeywords(item.title) + '</span>' +
-                      (item.event_type ? '<span class="badge-tag badge-type">' + esc(item.event_type) + '</span>' : '') +
                       '<span class="match-badge ' + matchCls + '" title="' + esc(t('tt.matchHigh')) + '">' + matchIcon + Math.round((item.match_score || 0) * 100) + '%</span>' +
                     '</span>' +
                     '<span class="top-meta">' + srcChips +
                       ((item.merged_count || 1) > 1 ? '<span>' + esc(t('tt.mergedCount', item.merged_count)) + '</span>' : '') +
-                      '<span class="ml-auto"></span>' + statusSegHtml(item.key, item.topic_status) +
+                      '<span class="ml-auto"></span>' +
+                      topicTagsHtml(item) +
                     '</span>' +
                   '</span>' +
                 '</li>'
@@ -382,17 +442,19 @@
         );
     }
 
-    function statusSegHtml(key, current) {
-        function seg(value, labelKey) {
-            var active = current === value ? ' seg-btn.active-' + value : '';
-            return '<button class="seg-btn' + active + '" data-status-key="' + esc(key) + '" data-status="' + value + '">' +
-                esc(t(labelKey)) + '</button>';
+    /** 选题标签：event_type + AI 匹配标签 + 各平台成员标签，去重展示（最多 3 个） */
+    function topicTagsHtml(item) {
+        var seen = [];
+        function push(tag) {
+            tag = (tag || '').trim();
+            if (tag && seen.indexOf(tag) < 0) seen.push(tag);
         }
-        return '<span class="seg-group">' +
-            seg('recommended', 'tt.stRecommend') +
-            seg('watched', 'tt.stWatched') +
-            seg('done', 'tt.stDone') +
-            '</span>';
+        push(item && item.event_type);
+        if (item && item.match && item.match.tag) push(item.match.tag);
+        (item && item.members || []).forEach(function (m) { push(m.tag); });
+        return seen.slice(0, 3).map(function (tag) {
+            return '<span class="badge-tag badge-type"><i class="fa-solid fa-tag"></i>' + esc(tag) + '</span>';
+        }).join('');
     }
 
     // ═══════════════════════════════════════
@@ -510,6 +572,7 @@
         if (!anyItems) {
             grid.innerHTML = '<div class="empty-state" style="grid-column: 1/-1;">' +
                 '<i class="fa-solid fa-inbox"></i><span>' + esc(t('tt.noDataHint')) + '</span></div>';
+            layoutHotGrid();   // 清掉瀑布流痕迹，回退网格态
             return;
         }
 
@@ -518,12 +581,11 @@
                 var matchedLevel = (item.match || {}).level;
                 var hasMatch = matchedLevel === 'high' || matchedLevel === 'mid';
                 var matchDot = '<span class="mini-match' + (hasMatch ? ' show ' + matchedLevel : '') + '"></span>';
-                var statusMark = item.topic_status ? ' <i class="fa-solid fa-bookmark" style="color:var(--brand-a)"></i>' : '';
                 return (
                     '<div class="hot-row' + (State.selectedKey === item.key ? ' active' : '') + '" data-key="' + esc(item.key) + '">' +
                       matchDot +
                       '<span class="hot-rank hot-r' + (i + 1) + '">' + (i + 1) + '</span>' +
-                      '<span class="hot-row-title" title="' + esc(item.title) + '">' + markKeywords(item.title) + statusMark + '</span>' +
+                      '<span class="hot-row-title" title="' + esc(item.title) + '">' + markKeywords(item.title) + '</span>' +
                     '</div>'
                 );
             }).join('');
@@ -538,12 +600,72 @@
                 '</div>'
             );
         }).join('');
+
+        layoutHotGrid();
     }
 
     function renderHotUpdated(fetchedAt) {
         var el = $('#hot-updated');
         if (!el) return;
-        el.textContent = fetchedAt ? t('tt.hotUpdated', fetchedAt) : '';
+        if (!fetchedAt) { el.textContent = ''; return; }
+        var time = normalizeClock(fetchedAt);
+        el.textContent = t('tt.hotUpdated', time) + hotFreshSuffix(time);
+    }
+
+    // ═══════════════════════════════════════
+    //  多平台热榜列 · 瀑布流布局
+    // ═══════════════════════════════════════
+    // 每张平台卡片塞进当前最矮的一列，错落排布；
+    // 平台数据量参差时也能紧凑填充，不产生大片空白。
+
+    var HOT_GAP = 12, HOT_MIN_COL = 210;
+
+    function layoutHotGrid() {
+        var grid = $('#hot-grid');
+        if (!grid) return;
+        var cards = Array.prototype.slice.call(grid.children);
+
+        // 空态 / 提示态：回退网格，清掉瀑布流痕迹
+        if (!cards.length || (cards.length === 1 && cards[0].classList.contains('empty-state'))) {
+            grid.classList.remove('js-masonry');
+            grid.style.height = '';
+            cards.forEach(resetCardLayout);
+            return;
+        }
+
+        var avail = grid.clientWidth;
+        if (!avail) return;
+        var nCols = Math.max(1, Math.floor((avail + HOT_GAP) / (HOT_MIN_COL + HOT_GAP)));
+        var colW = (avail - HOT_GAP * (nCols - 1)) / nCols;
+
+        // 先统一列宽并测量高度（此时仍在流内，offsetHeight 为真实内容高度）
+        cards.forEach(function (c) { c.style.width = colW + 'px'; });
+        var heights = cards.map(function (c) { return c.offsetHeight; });
+
+        // 依次塞进当前最矮的一列，形成错落排布
+        var colHeights = new Array(nCols).fill(0);
+        cards.forEach(function (c, i) {
+            var shortest = 0;
+            for (var j = 1; j < nCols; j++) {
+                if (colHeights[j] < colHeights[shortest]) shortest = j;
+            }
+            c.style.position = 'absolute';
+            c.style.left = (shortest * (colW + HOT_GAP)) + 'px';
+            c.style.top = colHeights[shortest] + 'px';
+            c.style.margin = '0';
+            colHeights[shortest] += heights[i] + HOT_GAP;
+        });
+
+        grid.classList.add('js-masonry');
+        grid.style.height = (Math.max.apply(null, colHeights) - HOT_GAP) + 'px';
+    }
+
+    function resetCardLayout(c) {
+        c.style.width = '';
+        c.style.position = '';
+        c.style.left = '';
+        c.style.top = '';
+        c.style.margin = '';
     }
 
     // ═══════════════════════════════════════
@@ -589,12 +711,12 @@
                 ' <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:10px;"></i></a>';
         }).join('<span style="opacity:.4"> · </span>');
 
-        // 头部：标题 + 来源/状态行
+        // 头部：标题 + 来源/核心标签行
         var header =
           '<div style="margin-bottom:12px;">' +
             '<div class="detail-h-title" style="margin-bottom:6px;">' + markKeywords(item.title) + '</div>' +
             '<div class="top-meta">' + linksHtml +
-              '<span class="ml-auto"></span>' + statusSegHtml(item.key, currentStatusOf(item.key)) +
+              '<span class="ml-auto"></span>' + topicTagsHtml(item) +
             '</div>' +
           '</div>';
 
@@ -608,15 +730,10 @@
             header + refsSection +
             researchPlaceholderHtml() +
             notesEditorHtml(item.key) +
-            actionButtonsHtml(item.key);
+            actionButtonsHtml();
 
         bindNotesEditor(item.key);
         bindDetailActions(item.key);
-    }
-
-    function currentStatusOf(key) {
-        var found = State.itemIndex[key];
-        return (found && found.item && found.item.topic_status) || '';
     }
 
     function refsListHtml(sources) {
@@ -631,9 +748,15 @@
     function researchPlaceholderHtml() {
         return (
           '<div id="research-area" class="detail-section">' +
-            '<div class="loading-skel"></div><div class="loading-skel" style="width:88%"></div>' +
-            '<div class="empty-state"><i class="fa-solid fa-wand-magic-sparkles"></i><span>' +
-            esc(t('tt.researchLoading')) + '</span></div>' +
+            '<div class="research-generate">' +
+              '<i class="fa-solid fa-wand-magic-sparkles research-generate-icon"></i>' +
+              '<div class="research-generate-body">' +
+                '<div class="research-generate-title">' + esc(t('tt.detailTitle')) + '</div>' +
+                '<div class="research-generate-sub">' + esc(t('tt.researchPrompt')) + '</div>' +
+              '</div>' +
+              '<button class="btn btn-primary" id="btn-research-generate">' +
+                '<i class="fa-solid fa-wand-magic-sparkles"></i> ' + esc(t('tt.researchGenerate')) + '</button>' +
+            '</div>' +
           '</div>'
         );
     }
@@ -674,63 +797,86 @@
     }
 
     function bindDetailActions(key) {
-        var btnDone = $('#btn-detail-done');
-        var btnWatch = $('#btn-detail-watch');
         var btnExport = $('#btn-detail-export');
-        if (btnDone) btnDone.addEventListener('click', function () { updateTopicStatus(key, 'done'); });
-        if (btnWatch) btnWatch.addEventListener('click', function () { updateTopicStatus(key, 'watched'); });
         if (btnExport) btnExport.addEventListener('click', function () { exportTopic(key); });
     }
 
-    function actionButtonsHtml(key) {
+    function actionButtonsHtml() {
         return (
           '<div class="detail-actions">' +
-            '<button class="btn btn-primary btn-mini" id="btn-detail-done"><i class="fa-solid fa-check"></i>' + esc(t('tt.markDone')) + '</button>' +
-            '<button class="btn btn-ghost btn-mini" id="btn-detail-watch"><i class="fa-solid fa-bookmark"></i>' + esc(t('tt.addWatch')) + '</button>' +
             '<button class="btn btn-ghost btn-mini" id="btn-detail-export"><i class="fa-solid fa-file-arrow-down"></i>' + esc(t('tt.export')) + '</button>' +
           '</div>'
         );
+    }
+
+    /** 将已生成的 AI 研判转成 Markdown；未生成过时返回空串 */
+    function researchToMarkdown(key) {
+        var cached = ResearchCache[key];
+        var r = cached && cached.state === 'done' && cached.data && cached.data.research;
+        if (!r || !r.summary) return '';
+
+        var md = ['\n## AI 深度研判\n'];
+        md.push('### 摘要\n' + r.summary + '\n');
+
+        if ((r.key_elements || []).length) {
+            md.push('### 关键要素\n' + r.key_elements.map(function (el) {
+                return '- ' + (el.type ? '**' + el.type + '** ' : '') + (el.value || '');
+            }).join('\n') + '\n');
+        }
+
+        var pills = [];
+        if (r.actionability && r.actionability.level) pills.push('可操作性：' + r.actionability.level);
+        if (r.exposure_forecast && r.exposure_forecast.tier) pills.push('曝光预判：' + r.exposure_forecast.tier);
+        if (r.estimated_minutes != null) pills.push('预估时长：' + r.estimated_minutes + ' 分钟');
+        if (pills.length) md.push('### 概览\n- ' + pills.join('\n- ') + '\n');
+
+        if (r.exposure_forecast && r.exposure_forecast.basis) md.push(r.exposure_forecast.basis + '\n');
+        if (r.match_explanation) md.push('### 兴趣匹配说明\n' + r.match_explanation + '\n');
+
+        var lists = [
+            ['切入点建议', r.angles],
+            ['机会分析', r.opportunities],
+            ['风险提示', r.risks],
+        ];
+        lists.forEach(function (item) {
+            if (item[1] && item[1].length) {
+                md.push('### ' + item[0] + '\n' + item[1].map(function (s) { return '- ' + s; }).join('\n') + '\n');
+            }
+        });
+
+        return md.join('\n');
     }
 
     function exportTopic(key) {
         var indexed = State.itemIndex[key];
         if (!indexed) return;
         var item = indexed.item;
-        var lines = ['# ' + item.title, '',
-            '- 来源: ' + (indexed.kind === 'hot' ? indexed.sourceName : (item.source_name || '')),
-            item.url ? '- 链接: ' + item.url : '',
-            (window.TerminalNotesCache && window.TerminalNotesCache[key]) ?
-                ('\n## 我的笔记\n\n' + window.TerminalNotesCache[key] + '\n') : '',
-        ];
-        var blob = new Blob([lines.filter(Boolean).join('\n')], { type: 'text/markdown;charset=utf-8' });
-        var a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = (key.substring(0, 8)) + '.md';
-        a.click();
-        URL.revokeObjectURL(a.href);
-        toast('Markdown ✓');
-    }
 
-    // ── 状态更新 ──
+        function doExport(notes) {
+            var lines = ['# ' + item.title, '',
+                '- 来源: ' + (indexed.kind === 'hot' ? indexed.sourceName : (item.source_name || '')),
+                item.url ? '- 链接: ' + item.url : '',
+                researchToMarkdown(key),
+                notes ? ('\n## 我的笔记\n\n' + notes + '\n') : '',
+            ];
+            var blob = new Blob([lines.filter(Boolean).join('\n')], { type: 'text/markdown;charset=utf-8' });
+            var a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = (key.substring(0, 8)) + '.md';
+            a.click();
+            URL.revokeObjectURL(a.href);
+            toast('Markdown ✓');
+        }
 
-    function setTopicStatusEverywhere(key, status) {
-        var normalized = status === 'none' || !status ? '' : status;
-        (State.hotlists && State.hotlists.platforms || []).forEach(function (g) {
-            (g.items || []).forEach(function (it) { if (it.key === key) it.topic_status = normalized; });
-        });
-        (State.stream && State.stream.items || []).forEach(function (it) { if (it.key === key) it.topic_status = normalized; });
-        State.top10 && (State.top10.items || []).forEach(function (it) { if (it.key === key) it.topic_status = normalized; });
-    }
-
-    function updateTopicStatus(key, status) {
-        return apiSend('POST', '/api/topic-status', { key: key, status: status }).then(function () {
-            setTopicStatusEverywhere(key, status);
-            renderHotGrid(false);
-            if (State.top10) renderTop10();
-            // 同步详情面板中的状态按钮
-            var indexed = State.itemIndex[key];
-            if (indexed && State.selectedKey === key) selectTopic(key);
-            return null;
+        var cached = window.TerminalNotesCache && window.TerminalNotesCache[key];
+        if (cached) { doExport(cached); return; }
+        // 本会话未缓存笔记：从后端拉取（/api/research/{key} 附带 notes）
+        apiGet('/api/research/' + key).then(function (data) {
+            var notes = (data && data.notes) || '';
+            if (notes && window.TerminalNotesCache) window.TerminalNotesCache[key] = notes;
+            doExport(notes);
+        }).catch(function () {
+            doExport('');
         });
     }
 
@@ -890,13 +1036,30 @@
                 return;
             }
             if (ResearchCache[key] && ResearchCache[key].state === 'loading') return;
-            requestResearch(key);
+            // 本会话未缓存：先查后端是否已有生成过的研判（跨会话持久化），有则直接展示，无则显示「生成研判」
+            apiGet('/api/research/' + key).then(function (data) {
+                if (data && data.cached && data.research && data.research.summary) {
+                    finishResearch(key, data);
+                } else {
+                    bindResearchGenerate(key);
+                }
+            }).catch(function () {
+                bindResearchGenerate(key);
+            });
         },
         refresh: function (key) {
             delete ResearchCache[key];
             requestResearch(key, true);
         },
     };
+
+    function bindResearchGenerate(key) {
+        var btn = $('#btn-research-generate');
+        if (!btn) return;
+        btn.addEventListener('click', function () {
+            requestResearch(key);
+        });
+    }
 
     function requestResearch(key, refresh) {
         ResearchCache[key] = { state: 'loading' };
@@ -993,8 +1156,8 @@
         if (r.exposure_forecast && r.exposure_forecast.tier) {
             html += '<span class="level-pill"><i class="fa-solid fa-chart-line"></i>' + esc(t('tt.detailExposure')) + ' · ' + esc(r.exposure_forecast.tier) + '</span>';
         }
-        if (r.estimated_hours != null) {
-            html += '<span class="level-pill"><i class="fa-regular fa-clock"></i>' + esc(t('tt.detailHours')) + ' · ' + esc(r.estimated_hours) + ' ' + esc(t('tt.detailHoursUnit')) + '</span>';
+        if (r.estimated_minutes != null) {
+            html += '<span class="level-pill"><i class="fa-regular fa-clock"></i>' + esc(t('tt.detailHours')) + ' · ' + esc(r.estimated_minutes) + ' ' + esc(t('tt.detailMinutesUnit')) + '</span>';
         }
         html += '</div>';
 
@@ -1041,17 +1204,6 @@
 
     function bindGlobalDelegation() {
         document.body.addEventListener('click', function (e) {
-            var segBtn = e.target.closest('.seg-btn[data-status-key]');
-            if (segBtn) {
-                e.stopPropagation();
-                var key = segBtn.getAttribute('data-status-key');
-                // 点击已激活的状态 → 取消；否则设为新状态
-                var wasActive = /active-(recommended|watched|done)/.test(segBtn.className);
-                var next = wasActive ? 'none' : segBtn.getAttribute('data-status');
-                updateTopicStatus(key, next);
-                return;
-            }
-
             var topicEl = e.target.closest('[data-key]');
             if (topicEl && !e.target.closest('a')) {
                 selectTopic(topicEl.getAttribute('data-key'));
@@ -1061,18 +1213,58 @@
 
     window.onTerminalLangChange = function () {
         renderStatus(State.bootstrap && State.bootstrap.status);
+        renderSourceStats();
+        renderMatchStats();
         if (State.stream) renderStream(false);
-        if (State.hotlists) renderHotGrid(false);
+        if (State.hotlists) {
+            renderHotGrid(false);
+            renderHotUpdated(State.hotlists.fetched_at);
+        }
         if (State.top10) renderTop10();
         if (!State.selectedKey) resetDetail();
     };
+
+    /** 手动触发 TOP10 重新生成 */
+    function triggerRescore() {
+        if (State.activeTaskId) return;   // 已有打分任务在跑
+        return apiSend('POST', '/api/score/run', {}).then(function (result) {
+            var tid = result && result.task_id;
+            if (!tid) return;
+            State.activeTaskId = tid;
+            renderTop10();
+            pollTask(tid,
+                function () {
+                    State.activeTaskId = null;
+                    reloadTop10().then(function () { toast('TOP10 ✓'); });
+                },
+                function (err) {
+                    State.activeTaskId = null;
+                    renderTop10();
+                    toast(err.message, 'error');
+                });
+        }).catch(function (err) {
+            toast(err.message, 'error');
+        });
+    }
 
     function boot() {
         bindTopbarEvents();
         bindStreamToggle();
         bindSettingsInput();
         bindGlobalDelegation();
+
+        // TOP10 手动重新生成
+        var rescoreBtn = $('#btn-top10-rescore');
+        if (rescoreBtn) rescoreBtn.addEventListener('click', triggerRescore);
+
         startClock();
+
+        // 窗口缩放后重新排布热榜瀑布流
+        var resizeTimer = null;
+        window.addEventListener('resize', function () {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(layoutHotGrid, 150);
+        });
 
         loadBootstrap()
             .then(loadProfile)

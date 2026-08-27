@@ -21,13 +21,17 @@
     // ═══════════════════════════════════════
     add([
         ['tt.brand', '选题终端', 'Topic Terminal'],
-        ['tt.titleSuffix', '· 选题终端（TOPIC TERMINAL v1.0）', '· Topic Terminal v1.0'],
+        ['tt.titleSuffix', '· 选题终端', '· TOPIC TERMINAL'],
         ['tt.editName', '点击修改名称', 'Click to rename'],
         ['tt.namePlaceholder', '输入你的昵称', 'Enter your nickname'],
         ['tt.langSwitch', 'EN', '中'],
         ['tt.statusOk', '数据源正常', 'All sources healthy'],
         ['tt.statusWarn', '部分数据源异常', 'Some sources degraded'],
         ['tt.statusDown', '数据源离线 / 长时间未更新', 'Sources offline or stale'],
+        ['tt.statusStale', '数据略旧，等待今日抓取', 'Stale data — waiting for today\'s crawl'],
+        ['tt.srcStats', '数据源 {0} · 平台 {1} · RSS {2}', 'Sources {0} · Platforms {1} · RSS {2}'],
+        ['tt.platform', '平台', 'Platforms'],
+        ['tt.matchStats', '热榜命中 {0}/{1} · RSS 命中 {2}/{3}', 'Hotlist {0}/{1} · RSS {2}/{3}'],
         ['tt.settings', '设置', 'Settings'],
     ]);
 
@@ -37,6 +41,8 @@
     add([
         ['tt.top10Title', '今日综合选题 TOP10', "Today's Top 10 Topics"],
         ['tt.top10Subtitle', '全网热点 × 你的兴趣 → AI 生成的专属选题榜', 'All-network trends × your interests → your personal topic list'],
+        ['tt.top10Gen', '生成于 {0}', 'Generated {0}'],
+        ['tt.rescore', '重新生成选题', 'Regenerate topics'],
         ['tt.top10Empty', '尚未生成专属选题榜。点击右上角 ⚙️ 设置兴趣描述，或等待抓取完成后自动打分。', 'No personalized list yet. Set your interests via ⚙️ Settings, or wait for the next crawl to be scored.'],
         ['tt.top10Generating', 'AI 正在结合你的兴趣重新打分…', 'AI is rescoring topics against your interests…'],
         ['tt.top10Progress', '已处理 {0}/{1}', '{0}/{1} processed'],
@@ -46,10 +52,6 @@
         ['tt.matchLow', '低匹配', 'Low match'],
         ['tt.sources', '来源', 'Sources'],
         ['tt.mergedCount', '{0} 个平台同题报道', 'Covered by {0} platforms'],
-        ['tt.stRecommend', '推荐', 'Featured'],
-        ['tt.stWatched', '待看', 'To read'],
-        ['tt.stDone', '已阅', 'Done'],
-        ['tt.stNone', '未标记', 'Unmarked'],
     ]);
 
     // ═══════════════════════════════════════
@@ -57,7 +59,7 @@
     // ═══════════════════════════════════════
     add([
         ['tt.authTitle', '权威新闻源头条', 'Authoritative Headlines'],
-        ['tt.authSubtitle', '最近 {0} 小时 · RSS 与财经热榜原始素材池', 'Last {0}h · Raw feed pool of RSS and finance hotlists'],
+        ['tt.authSubtitle', '最近 {0} 小时 · RSS 与权威媒体热榜原始素材池', 'Last {0}h · Raw feed pool of RSS and authoritative hotlists'],
         ['tt.interestOnly', '仅显示与我兴趣相关', 'Only interest matches'],
         ['tt.authEmpty', '24 小时内暂无头条数据。', 'No headlines in the last 24 hours.'],
         ['tt.readOriginal', '查看原文', 'Read original'],
@@ -85,8 +87,8 @@
         ['tt.detailElements', '关键要素', 'Key Elements'],
         ['tt.detailAction', '可操作性', 'Actionability'],
         ['tt.detailExposure', '曝光预判', 'Exposure Forecast'],
-        ['tt.detailHours', '预估时长', 'Estimated Hours'],
-        ['tt.detailHoursUnit', '小时', 'hours'],
+        ['tt.detailHours', '预估时长', 'Estimated Duration'],
+        ['tt.detailMinutesUnit', '分钟', 'min'],
         ['tt.detailMatchWhy', '为什么推荐给你', 'Why recommended for you'],
         ['tt.detailAngles', '切入点建议', 'Suggested Angles'],
         ['tt.detailOpps', '机会分析', 'Opportunities'],
@@ -94,13 +96,13 @@
         ['tt.detailRefs', '参考素材', 'References'],
         ['tt.detailNotes', '我的研判笔记', 'My Notes'],
         ['tt.notesSaved', '笔记已保存', 'Notes saved'],
-        ['tt.markDone', '标记为已处理', 'Mark as done'],
-        ['tt.addWatch', '加入待看', 'Add to reading list'],
         ['tt.export', '导出选题', 'Export'],
         ['tt.researchLoading', 'AI 正在深度研判该选题…（约需十几秒）', 'AI is researching this topic… (about 15s)'],
         ['tt.researchError', '研判生成失败：{0}', 'Research failed: {0}'],
         ['tt.researchUnavailable', 'AI 服务不可用：请在 config.yaml 配置 ai.api_key 后重启终端服务。', 'AI unavailable: configure ai.api_key in config.yaml and restart the terminal service.'],
         ['tt.refreshResearch', '重新生成研判', 'Regenerate research'],
+        ['tt.researchGenerate', '生成研判', 'Generate research'],
+        ['tt.researchPrompt', 'AI 深度研判需调用一次大模型，点击下方按钮生成', 'AI research costs one model call — generate now'],
     ]);
 
     // ═══════════════════════════════════════
@@ -109,7 +111,7 @@
     add([
         ['tt.setTitle', '个性化设置', 'Personalization'],
         ['tt.setNickname', '我的昵称', 'Nickname'],
-        ['tt.setNicknameHint', '显示在顶栏，默认「路口大爷」', 'Shown in the top bar, default “路口大爷”'],
+        ['tt.setNicknameHint', '显示在顶栏，默认「隔岸观火」', 'Shown in the top bar, default “隔岸观火”'],
         ['tt.setKeywords', '关注关键词', 'Watch Keywords'],
         ['tt.setKeywordsHint', '回车添加标签；关键词用于页面快速高亮与过滤', 'Press Enter to add tags; keywords highlight/filter items quickly'],
         ['tt.setInterests', '兴趣描述', 'Interest Description'],

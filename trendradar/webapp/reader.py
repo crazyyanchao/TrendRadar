@@ -4,7 +4,7 @@
 
 封装 StorageManager 的只读访问，为 API 组装：
 - 热榜并列流（多平台当前在榜）
-- 权威头条时间流（RSS + 财经类热榜合并）
+- 权威头条时间流（RSS + 权威媒体热榜合并）
 - 兴趣匹配索引（当日 ai_filter_results 按 标题+来源 的最优命中）
 - 数据源状态灯概况
 """
@@ -18,7 +18,7 @@ from trendradar.storage.base import NewsData, RSSData
 
 from trendradar.webapp.store import DailyDbReader, TERMINAL_INTERESTS_FILE
 
-# 权威财经头条流使用的热榜平台（与 RSS 时间流合并展示）
+# 权威头条流使用的热榜平台（与 RSS 时间流合并展示）
 AUTHORITY_PLATFORMS = ["wallstreetcn-hot", "cls-hot", "thepaper", "ifeng"]
 
 # 匹配徽章阈值：>=HIGH 为高匹配（🔥 高亮），>= MID 为中，其余低
@@ -46,7 +46,7 @@ def interests_hash(content: str) -> str:
 
 
 def parse_dt(value: str) -> Optional[datetime]:
-    """尽力解析 'YYYY-MM-DD HH:MM[:SS]' 或 ISO 时间字符串"""
+    """尽力解析 'YYYY-MM-DD HH:MM[:SS]'（或 Windows 文件名安全的 'HH-MM' 变体）或 ISO 时间字符串"""
     value = (value or "").strip()
     if not value:
         return None
@@ -54,7 +54,7 @@ def parse_dt(value: str) -> Optional[datetime]:
         return datetime.fromisoformat(value)
     except ValueError:
         pass
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d %H-%M"):
         try:
             return datetime.strptime(value, fmt)
         except ValueError:
@@ -108,8 +108,11 @@ class TerminalReader:
         return feeds
 
     def last_available_date(self) -> str:
-        dates = self.db.available_dates("news")
-        return dates[0] if dates else ""
+        """返回最近一个真实有数据的日期（跳过零点滚动生成的空库）"""
+        for d in self.db.available_dates("news"):
+            if self.db.count_items(d, "news", "news_items") > 0:
+                return d
+        return ""
 
     # ---------- 热榜并列流 ----------
 
@@ -286,6 +289,51 @@ class TerminalReader:
             return False
         return bool(rows)
 
+    def interest_match_stats(
+        self,
+        date: Optional[str] = None,
+        keywords: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """当日兴趣命中统计：命中数 / 总数（热榜与 RSS）。
+        命中优先取终端命名空间 AI 过滤 active 结果（match_index）；
+        若 AI 结果为空（AI 打分未跑/回退），回退到用户关键词标题匹配，避免恒 0 误导。
+        总数=最新爬取热榜条目 / 当日 RSS 条目。"""
+        resolved_date = date or self.today()
+        mi = self.match_index(resolved_date)
+        hot_matched = sum(1 for k in mi if k[0] == "hotlist")
+        rss_matched = sum(1 for k in mi if k[0] == "rss")
+
+        news = self._load_latest_crawl(resolved_date)
+        hot_total = sum(len(v) for v in news.items.values()) if news is not None else 0
+
+        rss = self._load_rss_day(resolved_date)
+        rss_total = sum(len(v) for v in rss.items.values()) if rss is not None else 0
+
+        if not hot_matched and not rss_matched and keywords:
+            kws = [k.lower() for k in keywords if k]
+            hot_matched = self._count_keyword_hits(news, kws) if news is not None else 0
+            rss_matched = self._count_keyword_hits(rss, kws) if rss is not None else 0
+
+        return {
+            "hotlist_matched": hot_matched,
+            "hotlist_total": hot_total,
+            "rss_matched": rss_matched,
+            "rss_total": rss_total,
+        }
+
+    @staticmethod
+    def _count_keyword_hits(container: Any, kws: List[str]) -> int:
+        """统计标题命中任一关键词的条目数（AI 未跑时的回退口径）"""
+        if container is None or not kws:
+            return 0
+        count = 0
+        for items in container.items.values():
+            for item in items:
+                title = (item.title or "").lower()
+                if any(kw in title for kw in kws):
+                    count += 1
+        return count
+
     # ---------- 状态灯 ----------
 
     def status_summary(self, date: Optional[str] = None) -> Dict[str, Any]:
@@ -307,7 +355,16 @@ class TerminalReader:
 
     def _status_level(self, crawl: Dict[str, Any], rss: Dict[str, Any], date: str) -> str:
         if not crawl["total"]:
-            # 当天无抓取记录：看是否根本还没有任何历史数据
+            # 当天无抓取记录：若最近真实数据仍在 24h 内则视为「数据略旧」（黄），否则离线（红）
+            last_date = self.last_available_date()
+            if last_date:
+                summary = self.db.get_crawl_summary(last_date)
+                last_crawl = (summary or {}).get("last_crawl", "") if summary else ""
+                last_dt = parse_dt(f"{last_date} {last_crawl}") if last_crawl else parse_dt(last_date)
+                if last_dt is not None:
+                    delta = self._as_naive(self.now()) - self._as_naive(last_dt)
+                    if delta.total_seconds() <= 24 * 3600:
+                        return "yellow"
             return "red"
         last_dt = parse_dt(f"{date} {crawl['last_crawl']}") if crawl["last_crawl"] else None
         hours_since = 999.0

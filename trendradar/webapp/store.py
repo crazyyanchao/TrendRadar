@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional
 TERMINAL_INTERESTS_FILE = "topic_terminal.txt"
 
 DEFAULT_PROFILE: Dict[str, Any] = {
-    "nickname": "路口大爷",
+    "nickname": "隔岸观火",
     "keywords": [],
     "interests": "",
     "source_prefs": {},
@@ -215,6 +215,11 @@ class DailyDbReader:
                 if conn is not None:
                     conn.close()
         return []
+
+    def count_items(self, date: str, db_type: str = "news", table: str = "news_items") -> int:
+        """统计某天某库指定表的行数（0 表示空滚动库/无数据）"""
+        rows = self._query_ro(date, db_type, f"SELECT COUNT(*) FROM {table}")
+        return rows[0][0] if rows else 0
 
     # ---------- 抓取状态（状态灯数据源） ----------
 
