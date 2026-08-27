@@ -135,6 +135,11 @@ class TerminalApp:
         open_lock = _threading.Lock()
 
         def get_connection_threadsafe(date=None, db_type="news"):
+            """
+            每线程独立连接（治 check_same_thread），可写模式。
+            AI 筛选管线需要向 news 库写入标签/分类结果；与爬虫的并发冲突
+            由 busy_timeout 兜底（双方事务均为毫秒级）。
+            """
             db_path = str(backend._get_db_path(date, db_type))
             cache = getattr(tls, "conns", None)
             if cache is None:
@@ -143,27 +148,13 @@ class TerminalApp:
             if conn is not None:
                 return conn
 
-            db_exists = Path(db_path).exists()
+            first_time = db_path not in seen_paths
             with open_lock:
-                first_time = db_path not in seen_paths
-                if db_exists:
-                    # 只读 URI：绝不触碰爬虫正在写的文件
-                    conn = _sqlite3.connect(
-                        f"file:{Path(db_path).as_posix()}?mode=ro",
-                        uri=True, timeout=5,
-                    )
-                    conn.row_factory = _sqlite3.Row
-                    conn.execute("PRAGMA busy_timeout = 5000")
-                    if first_time and db_type == "news":
-                        # ai_filter 表在极老库中可能缺失；缺失即视为无打分数据，静默降级
-                        try:
-                            backend._init_tables(conn, db_type)
-                        except _sqlite3.OperationalError:
-                            pass
-                else:
-                    # 库不存在：维持与主管线一致的语义（建空库），避免下游空指针
-                    conn = _sqlite3.connect(db_path, timeout=5)
-                    conn.row_factory = _sqlite3.Row
+                missing = not Path(db_path).exists()
+                conn = _sqlite3.connect(db_path, timeout=5)
+                conn.row_factory = _sqlite3.Row
+                conn.execute("PRAGMA busy_timeout = 5000")
+                if first_time and missing:
                     backend._init_tables(conn, db_type)
                 seen_paths.add(db_path)
             cache[db_path] = conn
