@@ -100,6 +100,95 @@ platforms:
       name: "知乎"
       expected_domain: "zhihu.com"
 
+    # ---- 官媒 / 权威 ----
+    - id: "cankaoxiaoxi"
+      name: "参考消息"
+      expected_domain: "ckxx.net"
+    - id: "sputniknewscn"
+      name: "卫星通讯社"
+      expected_domain: "sputniknews.cn"
+
+    # ---- 财经 ----
+    - id: "wallstreetcn-news"
+      name: "华尔街见闻·最新"
+      expected_domain: "wallstreetcn.com"
+    - id: "xueqiu-hotstock"
+      name: "雪球·热门股票"
+      expected_domain: "xueqiu.com"
+    - id: "gelonghui"
+      name: "格隆汇"
+      expected_domain: "gelonghui.com"
+    - id: "jin10"
+      name: "金十数据"
+      expected_domain: "jin10.com"
+
+    # ---- 科技 ----
+    - id: "ithome"
+      name: "IT之家"
+      expected_domain: "ithome.com"
+    - id: "sspai"
+      name: "少数派"
+      expected_domain: "sspai.com"
+    - id: "juejin"
+      name: "稀土掘金"
+      expected_domain: "juejin.cn"
+    - id: "solidot"
+      name: "Solidot"
+      expected_domain: "solidot.org"
+    - id: "hackernews"
+      name: "Hacker News"
+      expected_domain: "ycombinator.com"
+    - id: "github-trending-today"
+      name: "GitHub Trending"
+      expected_domain: "github.com"
+    - id: "v2ex"
+      name: "V2EX"
+      expected_domain: "v2ex.com"
+    - id: "coolapk"
+      name: "酷安"
+      expected_domain: "coolapk.com"
+
+    # ---- 国内资讯 / 社区 / 体育 ----
+    - id: "tencent-hot"
+      name: "腾讯新闻"
+      expected_domain: "inews.qq.com"
+    - id: "hupu"
+      name: "虎扑"
+      expected_domain: "hupu.com"
+    - id: "nowcoder"
+      name: "牛客"
+      expected_domain: "nowcoder.com"
+    - id: "dongqiudi"
+      name: "懂球帝"
+      expected_domain: "dongqiudi.com"
+    - id: "douban"
+      name: "豆瓣"
+      expected_domain: "douban.com"
+    - id: "chongbuluo-hot"
+      name: "虫部落·最热"
+      expected_domain: "chongbuluo.com"
+
+    # ---- 国际 ----
+    - id: "zaobao"
+      name: "联合早报"
+      expected_domain: "zaochenbao.com"
+    - id: "kaopu"
+      name: "靠谱新闻"
+      expected_domain: "kaopu.news"
+
+    # ---- 视频 / 娱乐 / 游戏 ----
+    - id: "qqvideo-tv-hotsearch"
+      name: "腾讯视频·热搜榜"
+      expected_domain: "qq.com"
+    - id: "iqiyi-hot-ranklist"
+      name: "爱奇艺·热播榜"
+      expected_domain: "iqiyi.com"
+    - id: "steam"
+      name: "Steam·在线人数"
+      # 榜单同时含 store.steampowered.com 与 steamcommunity.com 两类链接，
+      # 域名校验只允许单一域名，故不配置 expected_domain
+      # 链接均属 Valve 官方域名，安全可控
+
 
 
 # ===============================================================

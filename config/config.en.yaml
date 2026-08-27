@@ -101,6 +101,95 @@ platforms:
       name: "Zhihu"
       expected_domain: "zhihu.com"
 
+    # ---- Official / authoritative media ----
+    - id: "cankaoxiaoxi"
+      name: "Reference News"
+      expected_domain: "ckxx.net"
+    - id: "sputniknewscn"
+      name: "Sputnik CN"
+      expected_domain: "sputniknews.cn"
+
+    # ---- Finance ----
+    - id: "wallstreetcn-news"
+      name: "WallStreetCN News"
+      expected_domain: "wallstreetcn.com"
+    - id: "xueqiu-hotstock"
+      name: "Xueqiu Hot Stocks"
+      expected_domain: "xueqiu.com"
+    - id: "gelonghui"
+      name: "Gelonghui"
+      expected_domain: "gelonghui.com"
+    - id: "jin10"
+      name: "Jin10"
+      expected_domain: "jin10.com"
+
+    # ---- Tech ----
+    - id: "ithome"
+      name: "IT Home"
+      expected_domain: "ithome.com"
+    - id: "sspai"
+      name: "SSPai"
+      expected_domain: "sspai.com"
+    - id: "juejin"
+      name: "Juejin"
+      expected_domain: "juejin.cn"
+    - id: "solidot"
+      name: "Solidot"
+      expected_domain: "solidot.org"
+    - id: "hackernews"
+      name: "Hacker News"
+      expected_domain: "ycombinator.com"
+    - id: "github-trending-today"
+      name: "GitHub Trending"
+      expected_domain: "github.com"
+    - id: "v2ex"
+      name: "V2EX"
+      expected_domain: "v2ex.com"
+    - id: "coolapk"
+      name: "CoolAPK"
+      expected_domain: "coolapk.com"
+
+    # ---- China news / community / sports ----
+    - id: "tencent-hot"
+      name: "Tencent News"
+      expected_domain: "inews.qq.com"
+    - id: "hupu"
+      name: "Hupu"
+      expected_domain: "hupu.com"
+    - id: "nowcoder"
+      name: "Nowcoder"
+      expected_domain: "nowcoder.com"
+    - id: "dongqiudi"
+      name: "Dongqiudi"
+      expected_domain: "dongqiudi.com"
+    - id: "douban"
+      name: "Douban"
+      expected_domain: "douban.com"
+    - id: "chongbuluo-hot"
+      name: "Chongbuluo Hot"
+      expected_domain: "chongbuluo.com"
+
+    # ---- International ----
+    - id: "zaobao"
+      name: "Zaobao"
+      expected_domain: "zaochenbao.com"
+    - id: "kaopu"
+      name: "Kaopu News"
+      expected_domain: "kaopu.news"
+
+    # ---- Video / Entertainment / Gaming ----
+    - id: "qqvideo-tv-hotsearch"
+      name: "Tencent Video Hot"
+      expected_domain: "qq.com"
+    - id: "iqiyi-hot-ranklist"
+      name: "iQiyi Hot"
+      expected_domain: "iqiyi.com"
+    - id: "steam"
+      name: "Steam"
+      # The hot list mixes store.steampowered.com and steamcommunity.com links;
+      # the domain check allows only one domain, so expected_domain is omitted.
+      # All links are on official Valve domains and are safe to follow.
+
 
 
 # ===============================================================

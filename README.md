@@ -14,7 +14,7 @@
 [![GitHub Stars](https://img.shields.io/github/stars/sansan0/TrendRadar?style=flat-square&logo=github&color=yellow)](https://github.com/sansan0/TrendRadar/stargazers)
 [![GitHub Forks](https://img.shields.io/github/forks/sansan0/TrendRadar?style=flat-square&logo=github&color=blue)](https://github.com/sansan0/TrendRadar/network/members)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg?style=flat-square)](LICENSE)
-[![Version](https://img.shields.io/badge/version-v6.10.0-blue.svg)](https://github.com/sansan0/TrendRadar)
+[![Version](https://img.shields.io/badge/version-v0.0.1-blue.svg)](https://github.com/sansan0/TrendRadar)
 [![MCP](https://img.shields.io/badge/MCP-v4.1.0-green.svg)](https://github.com/sansan0/TrendRadar)
 [![Docker Pulls](https://img.shields.io/docker/pulls/wantcat/trendradar?style=flat-square&logo=docker&logoColor=white&label=TrendRadar%20Pulls&color=2496ED)](https://hub.docker.com/r/wantcat/trendradar)
 [![Docker Pulls](https://img.shields.io/docker/pulls/wantcat/trendradar-mcp?style=flat-square&logo=docker&logoColor=white&label=MCP%20Pulls&color=2496ED)](https://hub.docker.com/r/wantcat/trendradar-mcp)
@@ -249,7 +249,7 @@
 - **提示**：建议查看【历史更新】，明确具体的【功能内容】
 
 
-### 2026/06/19 - v6.10.0
+### 2026/06/19 - v0.0.1
 
 - **AI 翻译分批处理**：大量标题翻译时自动分批请求，避免单次请求超限导致翻译失败
 - **模块拆分重构**：拆分 context.py 和 \_\_main\_\_.py，AI 筛选流水线独立为 filter_pipeline 模块，职责更清晰、维护更方便
@@ -3613,6 +3613,7 @@ docker exec -it trendradar python manage.py stop_terminal     # 停止
   ```
 - **远程存储用户**：使用 S3 远端存储时请开启 `storage.pull.enabled`，否则本地终端无数据可读。
 - 原始设计稿见 [docs/design/选题终端设计文档.md](docs/design/选题终端设计文档.md)。
+- 开发本地启动与日常刷新见 [docs/dev/开发启动指南.md](docs/dev/开发启动指南.md)。
 
 <br>
 
