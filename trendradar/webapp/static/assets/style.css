@@ -205,11 +205,6 @@ button { font-family: inherit; }
     .tb-clock { display: none; }
 }
 
-/* 窄屏下热榜三列过挤：改为纵向堆叠 */
-@media (max-width: 860px) {
-    .hot-columns { flex-direction: column; }
-}
-
 .section-scroll {
     overflow-y: auto;
     scrollbar-width: thin;
@@ -394,13 +389,13 @@ button { font-family: inherit; }
 .title-mark { color: #B45309; background: rgba(245, 158, 11, 0.15); border-radius: 3px; padding: 0 1px; }
 
 /* ─────────────── 多平台热榜列 ─────────────── */
-/* 等分弹性三列，铺满不留侧边空白；窄屏自动收窄标题省略号 */
+/* 可换行网格：宽度不足时自动折行（窄屏两列、宽屏多列），保证每列可读宽度 */
 .hot-columns {
-    display: flex;
-    gap: 10px;
-    align-items: flex-start;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 12px;
+    align-items: start;
 }
-.hot-columns > * { flex: 1 1 0; min-width: 0; }
 .hot-col-head {
     display: flex; align-items: center; justify-content: space-between;
     margin-bottom: 6px;
@@ -409,9 +404,9 @@ button { font-family: inherit; }
 .hot-col-count { font-size: 11px; color: var(--text-secondary); }
 
 .hot-row {
-    display: flex; align-items: center; gap: 6px;
-    padding: 4.5px 5px;
-    border-radius: 8px;
+    display: flex; align-items: center; gap: 8px;
+    padding: 5.5px 6px;
+    border-radius: 9px;
     cursor: pointer;
     transition: background .14s ease;
 }
@@ -426,7 +421,7 @@ button { font-family: inherit; }
 .hot-row .hot-rank.hot-r1 { color: #ED8F03; }
 .hot-row .hot-rank.hot-r2 { color: #F59E0B; opacity: .85; }
 .hot-row .hot-rank.hot-r3 { color: #D97706; opacity: .7; }
-.hot-row-title { flex: 1; min-width: 0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hot-row-title { flex: 1; min-width: 0; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mini-match {
     flex: none; width: 8px; height: 8px; border-radius: 50%;
     visibility: hidden;
