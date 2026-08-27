@@ -209,3 +209,7 @@ __marimo__/
 
 # 选题终端运行时状态（个性化配置/TOP10快照/研判缓存）
 output/terminal/
+
+# 爬虫每次运行的报告产物（按需本地查看，不入库）
+output/html/
+output/index.html
