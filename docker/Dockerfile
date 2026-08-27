@@ -7,6 +7,7 @@ ARG TARGETARCH
 ENV SUPERCRONIC_VERSION=v0.2.39
 
 RUN set -ex && \
+    { [ -f /etc/apt/sources.list.d/debian.sources ] && sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources || sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list; } && \
     apt-get update && \
     apt-get install -y --no-install-recommends curl ca-certificates && \
     case ${TARGETARCH} in \
@@ -26,10 +27,10 @@ RUN set -ex && \
     ;; \
     esac && \
     echo "Downloading supercronic for ${TARGETARCH} from ${SUPERCRONIC_URL}" && \
-    # 重试机制：最多3次，每次超时30秒
+    # 重试机制：最多3次，长超时 + 断点续传（慢速网络下也能拉完）
     for i in 1 2 3; do \
         echo "Download attempt $i/3"; \
-        if curl -fsSL --connect-timeout 30 --max-time 60 -o "$SUPERCRONIC" "$SUPERCRONIC_URL"; then \
+        if curl -fsSL -C - --connect-timeout 30 --max-time 300 -o "$SUPERCRONIC" "$SUPERCRONIC_URL"; then \
             echo "Download successful"; \
             break; \
         else \
