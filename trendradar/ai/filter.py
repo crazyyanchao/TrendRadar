@@ -312,6 +312,7 @@ class AIFilter:
         titles: List[Dict],
         tags: List[Dict],
         interests_content: str = "",
+        max_tags_per_item: int = 1,
     ) -> Optional[List[Dict]]:
         """
         阶段 B：对一批新闻标题做分类
@@ -320,9 +321,12 @@ class AIFilter:
             titles: [{"id": news_item_id, "title": str, "source": str}]
             tags: [{"id": tag_id, "tag": str, "description": str}]
             interests_content: 用户的兴趣描述（含质量过滤要求）
+            max_tags_per_item: 每条新闻最多保留的标签数。1 = 单标签（默认，cron 管线行为）；
+                >1 时允许 AI 为一条新闻返回多个标签（按相关度从高到低保留前 N 个）。
 
         Returns:
-            成功返回 [{"news_item_id": int, "tag_id": int, "relevance_score": float}, ...]（无匹配时为空列表）；
+            成功返回 [{"news_item_id": int, "tag_id": int, "relevance_score": float}, ...]（无匹配时为空列表；
+            多标签模式下同一 news_item_id 可出现多行，每行一个标签）；
             调用失败返回 None（用于区分"无匹配"与"调用失败"，失败批次不标记已分析以便下次重试）
         """
         if not titles or not tags:
@@ -351,9 +355,23 @@ class AIFilter:
         user_prompt = user_prompt.replace("{news_count}", str(len(titles)))
         user_prompt = user_prompt.replace("{news_list}", news_list)
 
+        if max_tags_per_item and max_tags_per_item > 1:
+            # 多标签模式：提示 AI 同一 id 可重复出现（每行一个标签）
+            user_prompt += (
+                "\n\n注意：每条新闻可匹配 1~{n} 个标签；同一 id 可重复出现（每行一个标签），"
+                "不要只为每条新闻输出一行。"
+            ).format(n=max_tags_per_item)
+
         messages = []
         if self.classify_system:
-            messages.append({"role": "system", "content": self.classify_system})
+            system_content = self.classify_system
+            if "{tag_limit_rule}" in system_content:
+                if max_tags_per_item and max_tags_per_item > 1:
+                    rule = f"每条新闻可匹配 1~{max_tags_per_item} 个最相关的标签（按相关度从高到低排序）"
+                else:
+                    rule = "每条新闻只归入一个最相关的标签（选相关度最高的那个）"
+                system_content = system_content.replace("{tag_limit_rule}", rule)
+            messages.append({"role": "system", "content": system_content})
         messages.append({"role": "user", "content": user_prompt})
 
         if self.debug:
@@ -378,7 +396,7 @@ class AIFilter:
         try:
             response = self.client.chat(messages)
 
-            return self._parse_classify_response(response, titles, tags)
+            return self._parse_classify_response(response, titles, tags, max_tags_per_item)
         except Exception as e:
             print(f"[AI筛选] 分类请求失败: {type(e).__name__}: {e}")
             return None
@@ -388,14 +406,16 @@ class AIFilter:
         response: str,
         titles: List[Dict],
         tags: List[Dict],
+        max_tags_per_item: int = 1,
     ) -> List[Dict]:
         """解析分类的 AI 响应
 
         支持两种 JSON 格式：
-        - 新格式（扁平）: [{"id": 1, "tag_id": 1, "score": 0.9}, ...]
+        - 新格式（扁平）: [{"id": 1, "tag_id": 1, "score": 0.9}, ...]（多标签时同一 id 可出现多次）
         - 旧格式（嵌套）: [{"id": 1, "tags": [{"tag_id": 1, "score": 0.9}]}, ...]
 
-        每条新闻只保留一个最高分的 tag，杜绝同一条出现在多个标签下。
+        每条新闻保留最多 max_tags_per_item 个 tag（按分数降序，同一 tag 取最高分）。
+        max_tags_per_item=1 时等价于旧行为：只保留最高分 tag。
         """
         json_str = self._extract_json(response)
         if not json_str:
@@ -422,8 +442,8 @@ class AIFilter:
         tag_id_set = {t["id"] for t in tags}
         tag_name_map = {t["id"]: t["tag"] for t in tags}
 
-        # 每条新闻只保留一个最高分的 tag
-        best_per_news: Dict[int, Dict] = {}  # news_id -> {"tag_id": ..., "score": ...}
+        # 每条新闻收集所有合法 tag 的最高分，最后按分数降序取前 max_tags_per_item 个
+        per_news: Dict[int, Dict[int, float]] = {}  # news_id -> {tag_id: best_score}
         skipped_news_ids = 0
         skipped_tag_ids = 0
         skipped_empty = 0
@@ -455,10 +475,7 @@ class AIFilter:
                 skipped_empty += 1
                 continue
 
-            # 取最高分的有效 tag
-            best_tag_id = None
-            best_score = -1.0
-
+            bucket = per_news.setdefault(news_id, {})
             for tag_match in candidates:
                 if not isinstance(tag_match, dict):
                     continue
@@ -474,26 +491,24 @@ class AIFilter:
                 except (ValueError, TypeError):
                     score = 0.5
 
-                if score > best_score:
-                    best_score = score
-                    best_tag_id = tag_id
+                # 同一 tag 重复出现时只保留最高分
+                if tag_id not in bucket or score > bucket[tag_id]:
+                    bucket[tag_id] = score
 
-            if best_tag_id is not None:
-                # 如果同一条新闻被多次返回，只保留分数更高的
-                existing = best_per_news.get(news_id)
-                if existing is None or best_score > existing["relevance_score"]:
-                    best_per_news[news_id] = {
-                        "news_item_id": news_id,
-                        "tag_id": best_tag_id,
-                        "relevance_score": best_score,
-                    }
-
-        results = list(best_per_news.values())
+        results = []
+        for news_id, bucket in per_news.items():
+            ranked = sorted(bucket.items(), key=lambda kv: (-kv[1], kv[0]))
+            for tag_id, score in ranked[: max(1, max_tags_per_item)]:
+                results.append({
+                    "news_item_id": news_id,
+                    "tag_id": tag_id,
+                    "relevance_score": score,
+                })
 
         if self.debug:
             ai_returned = len(data)
             print(f"[AI筛选][DEBUG] --- 分类解析结果 ---")
-            print(f"[AI筛选][DEBUG] AI 返回 {ai_returned} 条, 有效 {len(results)} 条 (每条新闻仅保留最高分 tag)")
+            print(f"[AI筛选][DEBUG] AI 返回 {ai_returned} 条, 有效 {len(results)} 条 (每条新闻最多 {max_tags_per_item} 个标签)")
             if skipped_empty > 0:
                 print(f"[AI筛选][DEBUG] 跳过空 tags: {skipped_empty} 条")
             if skipped_news_ids > 0:

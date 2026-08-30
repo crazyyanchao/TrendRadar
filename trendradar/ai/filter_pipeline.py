@@ -65,6 +65,8 @@ class AIFilterPipeline:
         self,
         interests_file: Optional[str] = None,
         interests_content: Optional[str] = None,
+        force_full_reclassify: bool = False,
+        max_tags_per_item: int = 1,
     ) -> Optional[AIFilterResult]:
         """
         执行 AI 智能筛选完整流程
@@ -80,6 +82,11 @@ class AIFilterPipeline:
             interests_file: 兴趣描述文件名（config/ 或 config/custom/ai/ 下）
             interests_content: 直接注入的兴趣描述内容。非空时优先生效，
                 不再读取文件——供选题终端等场景在 config 目录只读时动态传入个性化兴趣。
+            force_full_reclassify: 兴趣变更时强制全量重建标签（废弃全部旧标签并重分类），
+                不做增量保留——用于选题终端等"结果必须严格反映当前兴趣"的场景，
+                避免历史兴趣的标签残留污染当前结果。
+            max_tags_per_item: 每条新闻最多保留的标签数（1 = 单标签，cron 管线默认行为；
+                >1 时允许同一条新闻归入多个标签，供选题终端多标签展示）。
         """
         filter_config = self._filter_config
 
@@ -123,6 +130,7 @@ class AIFilterPipeline:
             self._handle_tag_update(
                 ai_filter, interests_content, current_hash, stored_hash,
                 effective_interests_file, filter_config,
+                force_full_reclassify=force_full_reclassify,
             )
 
         # 获取当前 active 标签
@@ -153,6 +161,7 @@ class AIFilterPipeline:
         # 5. 批量分类
         total_results, succeeded_news_ids, succeeded_rss_ids = self._classify_batches(
             ai_filter, pending_news, pending_rss, active_tags, interests_content, filter_config,
+            max_tags_per_item=max_tags_per_item,
         )
 
         # 6. 保存结果
@@ -189,6 +198,7 @@ class AIFilterPipeline:
         stored_hash: Optional[str],
         effective_interests_file: str,
         filter_config: Dict,
+        force_full_reclassify: bool = False,
     ) -> None:
         new_version = self.storage.get_latest_ai_filter_tag_version() + 1
         threshold = filter_config.get("RECLASSIFY_THRESHOLD", 0.6)
@@ -202,6 +212,22 @@ class AIFilterPipeline:
             tags_data = _with_ordered_priorities(tags_data, start_priority=1)
             saved_count = self.storage.save_ai_filter_tags(tags_data, new_version, current_hash, interests_file=effective_interests_file)
             print(f"[AI筛选] 已保存 {saved_count} 个标签 (版本 {new_version})")
+            return
+
+        if force_full_reclassify:
+            # 强制全量重建：废弃全部旧标签并清空已分析记录，重新从当前兴趣提取。
+            # 跳过 AI 增量判定——增量路径会把旧兴趣的标签"保留"下来（change_ratio < 阈值时），
+            # 导致历史兴趣残留污染当前结果。
+            print(f"[AI筛选] 兴趣变更且要求严格反映当前兴趣 ({effective_interests_file})，全量重建标签...")
+            tags_data = ai_filter.extract_tags(interests_content)
+            if not tags_data:
+                self.storage.end_batch()
+                raise _TagExtractionError()
+            tags_data = _with_ordered_priorities(tags_data, start_priority=1)
+            deprecated_count = self.storage.deprecate_all_ai_filter_tags(interests_file=effective_interests_file)
+            self.storage.clear_analyzed_news(interests_file=effective_interests_file)
+            saved_count = self.storage.save_ai_filter_tags(tags_data, new_version, current_hash, interests_file=effective_interests_file)
+            print(f"[AI筛选] 废弃 {deprecated_count} 个旧标签, 保存 {saved_count} 个新标签 (版本 {new_version})")
             return
 
         old_tags = self.storage.get_active_ai_filter_tags(interests_file=effective_interests_file)
@@ -324,7 +350,7 @@ class AIFilterPipeline:
             freshness_info = f", 新鲜度过滤 {freshness_filtered_rss} 条" if freshness_filtered_rss > 0 else ""
             print(f"[AI筛选] RSS: 总计 {rss_total} 条{freshness_info}, 已分析跳过 {rss_skipped} 条, 本次发送AI分析 {rss_pending} 条")
 
-    def _classify_batches(self, ai_filter, pending_news, pending_rss, active_tags, interests_content, filter_config):
+    def _classify_batches(self, ai_filter, pending_news, pending_rss, active_tags, interests_content, filter_config, max_tags_per_item=1):
         batch_size = filter_config.get("BATCH_SIZE", 200)
         batch_interval = filter_config.get("BATCH_INTERVAL", 5)
         total_results = []
@@ -341,7 +367,7 @@ class AIFilterPipeline:
                 {"id": n["id"], "title": n["title"], "source": n.get("source_name", "")}
                 for n in batch
             ]
-            batch_results = ai_filter.classify_batch(titles_for_ai, active_tags, interests_content)
+            batch_results = ai_filter.classify_batch(titles_for_ai, active_tags, interests_content, max_tags_per_item=max_tags_per_item)
             batch_count += 1
             if batch_results is None:
                 print(f"[AI筛选] 热榜批次 {i // batch_size + 1}: {len(batch)} 条 → 分类失败，将在下次运行重试")
@@ -363,7 +389,7 @@ class AIFilterPipeline:
                 {"id": n["id"], "title": n["title"], "source": n.get("source_name", "")}
                 for n in batch
             ]
-            batch_results = ai_filter.classify_batch(titles_for_ai, active_tags, interests_content)
+            batch_results = ai_filter.classify_batch(titles_for_ai, active_tags, interests_content, max_tags_per_item=max_tags_per_item)
             batch_count += 1
             if batch_results is None:
                 print(f"[AI筛选] RSS 批次 {i // batch_size + 1}: {len(batch)} 条 → 分类失败，将在下次运行重试")

@@ -468,6 +468,9 @@ def _terminate_webserver_process(pid: int, require_expected: bool = True) -> boo
 
     require_expected=True 时，仅终止确认是 http.server 的进程，避免误杀。
     """
+    if pid == os.getpid():
+        print(f"  ⚠️ PID {pid} 是当前进程，跳过终止")
+        return False
     try:
         os.kill(pid, 0)
     except OSError:
@@ -693,7 +696,9 @@ def start_terminal():
                 print("  💡 停止服务: python manage.py stop_terminal")
                 return
 
-            _terminate_webserver_process(old_pid, require_expected=False)
+            # 旧 PID 已失效（进程不存在或并非终端进程），直接清理 PID 文件即可。
+            # 不要按 PID 去 terminate —— 容器重启后该 PID 可能已被新进程复用，
+            # require_expected=False 会无差别 SIGTERM，可能杀掉当前 manage.py 自身。
             os.remove(TERMINAL_PID_FILE)
             print("  ℹ️ 检测到失效的 PID 文件，已清理")
         except Exception as e:

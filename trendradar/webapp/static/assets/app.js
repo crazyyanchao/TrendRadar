@@ -179,8 +179,16 @@
         });
     }
 
+    /** 数据源偏好：未在 source_prefs 中配置的默认开启；取消（false）则隐藏该源数据 */
+    function isSourceEnabled(id) {
+        if (!id) return true;
+        var prefs = (State.profile && State.profile.source_prefs) || {};
+        return prefs[id] !== false;
+    }
+
     function reloadHotlists(silent) {
         return apiGet('/api/hotlists?limit=30').then(function (data) {
+            data.platforms = (data.platforms || []).filter(function (g) { return isSourceEnabled(g.id); });
             State.hotlists = data;
             State.matchStats = data.match_stats || null;
             renderMatchStats();
@@ -195,6 +203,7 @@
     function reloadStream(silent) {
         var onlyParam = State.interestOnly ? '&interest_only=1' : '';
         return apiGet('/api/rss?hours=24&limit=120' + onlyParam).then(function (data) {
+            data.items = (data.items || []).filter(function (it) { return isSourceEnabled(it.source_id); });
             State.stream = data;
             rebuildItemIndex();
             renderStream(!silent);
@@ -442,17 +451,18 @@
         );
     }
 
-    /** 选题标签：event_type + AI 匹配标签 + 各平台成员标签，去重展示（最多 3 个） */
+    /** 选题标签：后端聚合 tags + event_type + AI 匹配标签 + 成员标签，去重展示（最多 5 个） */
     function topicTagsHtml(item) {
         var seen = [];
         function push(tag) {
             tag = (tag || '').trim();
             if (tag && seen.indexOf(tag) < 0) seen.push(tag);
         }
+        (item && item.tags || []).forEach(push);
         push(item && item.event_type);
         if (item && item.match && item.match.tag) push(item.match.tag);
         (item && item.members || []).forEach(function (m) { push(m.tag); });
-        return seen.slice(0, 3).map(function (tag) {
+        return seen.slice(0, 5).map(function (tag) {
             return '<span class="badge-tag badge-type"><i class="fa-solid fa-tag"></i>' + esc(tag) + '</span>';
         }).join('');
     }
@@ -916,22 +926,33 @@
         });
     }
 
+    function prefItemHtml(item, savedPrefs) {
+        var on = savedPrefs[item.id];
+        if (on === undefined) on = true;   // 未配置默认全开
+        return (
+          '<label class="pref-item' + (on ? '' : ' off') + '" data-pref-id="' + esc(item.id) + '">' +
+            '<span class="toggle-switch"><input type="checkbox" ' + (on ? 'checked' : '') + '/><span class="toggle-slider"></span></span>' +
+            esc(item.name) +
+          '</label>'
+        );
+    }
+
     function renderPrefGrid() {
         var grid = $('#pref-grid');
-        var prefs = [];
-        (State.bootstrap && State.bootstrap.platforms || []).forEach(function (pl) { prefs.push(pl); });
         var savedPrefs = State.profile.source_prefs || {};
+        var platforms = State.bootstrap && State.bootstrap.platforms || [];
+        var feeds = State.bootstrap && State.bootstrap.feeds || [];
 
-        grid.innerHTML = prefs.map(function (pl) {
-            var on = savedPrefs[pl.id];
-            if (on === undefined) on = true;   // 未配置默认全开
-            return (
-              '<label class="pref-item' + (on ? '' : ' off') + '" data-pref-id="' + esc(pl.id) + '">' +
-                '<span class="toggle-switch"><input type="checkbox" ' + (on ? 'checked' : '') + '/><span class="toggle-slider"></span></span>' +
-                esc(pl.name) +
-              '</label>'
-            );
-        }).join('');
+        var html = '';
+        if (platforms.length) {
+            html += '<div class="pref-section">' + esc(t('tt.setSourcesPlatforms')) + '</div>';
+            html += platforms.map(function (pl) { return prefItemHtml(pl, savedPrefs); }).join('');
+        }
+        if (feeds.length) {
+            html += '<div class="pref-section">' + esc(t('tt.setSourcesFeeds')) + '</div>';
+            html += feeds.map(function (fd) { return prefItemHtml(fd, savedPrefs); }).join('');
+        }
+        grid.innerHTML = html;
 
         grid.querySelectorAll('.pref-item').forEach(function (label) {
             label.addEventListener('click', function (e) {
@@ -956,7 +977,9 @@
 
         var btn = $('#btn-save-settings');
         btn.disabled = true;
-        saveProfile(payload).catch(function (err) {
+        saveProfile(payload).then(function () {
+            return reloadAllData(true);   // 保存后立即按新数据源偏好刷新热榜与头条流
+        }).catch(function (err) {
             toast(err.message, 'warn');
         }).finally(function () {
             btn.disabled = false;
@@ -1017,6 +1040,81 @@
             if (e.target === this) input.focus();
         });
         $('#btn-save-settings').addEventListener('click', saveSettings);
+    }
+
+    // ═══════════════════════════════════════
+    //  AI 关键词：从兴趣描述生成 / 从文本抽取
+    // ═══════════════════════════════════════
+
+    /** 把 AI 抽出的词合并进设置关键词（保留手动添加的词，去重），并重绘 chips */
+    function mergeSettingsKeywords(newKws) {
+        var existing = settingsKeywords.map(function (k) { return String(k || '').trim().toLowerCase(); });
+        (newKws || []).forEach(function (kw) {
+            kw = String(kw || '').trim();
+            if (kw && existing.indexOf(kw.toLowerCase()) < 0) {
+                settingsKeywords.push(kw);
+                existing.push(kw.toLowerCase());
+            }
+        });
+        renderTagChips();
+    }
+
+    /** 切换 AI 抽取按钮的 loading 状态（spinner + 文案），并防止重复点击 */
+    function setKeywordBtnBusy(btn, busy) {
+        if (!btn) return;
+        if (busy) {
+            btn.dataset.restoreLabel = btn.textContent;   // 记住原标题，便于恢复
+            btn.disabled = true;
+            btn.classList.add('kw-busy');
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span> ' + esc(t('tt.kwExtractBusy')) + '</span>';
+        } else {
+            btn.disabled = false;
+            btn.classList.remove('kw-busy');
+            if (btn.dataset.restoreLabel !== undefined) {
+                btn.textContent = btn.dataset.restoreLabel;
+                delete btn.dataset.restoreLabel;
+            }
+        }
+    }
+
+    /** 调后端抽取接口；仅合并进设置关键词，不自动保存（用户点保存才提交） */
+    function callKeywordExtract(text, btn, onOk) {
+        setKeywordBtnBusy(btn, true);
+        apiSend('POST', '/api/keywords/extract', { text: text }).then(function (data) {
+            var list = data.keywords || [];
+            mergeSettingsKeywords(list);
+            if (onOk) onOk();
+            toast(list.length ? t('tt.kwMerged', list.length) : t('tt.kwNoResult'),
+                  list.length ? 'ok' : 'warn');
+        }).catch(function (err) {
+            toast(err.message, 'error');
+        }).finally(function () {
+            setKeywordBtnBusy(btn, false);
+        });
+    }
+
+    function extractFromInterests() {
+        var text = $('#set-interests').value.trim();
+        if (!text) { toast(t('tt.kwNeedInterests'), 'warn'); return; }
+        callKeywordExtract(text, $('#btn-kw-from-interests'));
+    }
+
+    function extractFromText() {
+        var ta = $('#kw-extract-text');
+        var text = ta.value.trim();
+        if (!text) { toast(t('tt.kwNeedText'), 'warn'); return; }
+        callKeywordExtract(text, $('#btn-kw-extract-run'), function () { ta.value = ''; });
+    }
+
+    function bindKeywordAi() {
+        var btnInterests = $('#btn-kw-from-interests');
+        var btnToggle = $('#btn-kw-toggle-extract');
+        var btnRun = $('#btn-kw-extract-run');
+        if (btnInterests) btnInterests.addEventListener('click', extractFromInterests);
+        if (btnToggle) btnToggle.addEventListener('click', function () {
+            $('#kw-extract-box').classList.toggle('hidden');
+        });
+        if (btnRun) btnRun.addEventListener('click', extractFromText);
     }
 
     // ═══════════════════════════════════════
@@ -1251,6 +1349,7 @@
         bindTopbarEvents();
         bindStreamToggle();
         bindSettingsInput();
+        bindKeywordAi();
         bindGlobalDelegation();
 
         // TOP10 手动重新生成

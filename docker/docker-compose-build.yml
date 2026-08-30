@@ -11,7 +11,8 @@ services:
       - "127.0.0.1:${TERMINAL_PORT:-8090}:${TERMINAL_PORT:-8090}"
 
     volumes:
-      - ../config:/app/config:ro
+      # :rw —— 选题终端需把「关注关键词」同步写回 frequency_words.txt（原子写）
+      - ../config:/app/config:rw
       - ../output:/app/output
 
     environment:

@@ -138,6 +138,11 @@ class ScoringService:
                 result = pipeline.run(
                     interests_file=TERMINAL_INTERESTS_FILE,
                     interests_content=content,
+                    # 终端结果必须严格反映当前兴趣：兴趣变更时全量重建标签，
+                    # 避免历史兴趣的标签（增量保留）污染 TOP10。
+                    force_full_reclassify=True,
+                    # 每个选题展示 1~5 个标签：允许同一条新闻归入多个标签
+                    max_tags_per_item=5,
                 )
             except Exception as e:  # noqa: BLE001 —— 降级到 keyword
                 print(f"[选题终端] AI 打分失败，回退关键词引擎: {e}")
@@ -151,6 +156,11 @@ class ScoringService:
         if engine == "keyword":
             candidates = self._candidates_from_keywords(profile.get("keywords", []))
             handle.set_progress(1, 3)
+
+        # 数据源偏好：被禁用的平台数据不参与选题（关键词引擎与 AI 引擎候选统一过滤）
+        prefs = profile.get("source_prefs") or {}
+        if prefs:
+            candidates = [c for c in candidates if prefs.get(c.get("source_id"), True) is not False]
 
         groups = aggregate_candidates(candidates)
         date_str = self.reader.today()
@@ -353,6 +363,13 @@ def group_to_item(group: List[Dict[str, Any]], date_str: str, score: int) -> Dic
     ranked = [c["rank"] for c in group if c["rank"] and c["rank"] > 0]
     tags_hit = [c for c in group if c.get("tag")]
     tags_hit.sort(key=lambda c: c.get("tag_priority", 9999))
+    # 选题标签集合：成员标签去重（保持优先级顺序），1~5 个
+    item_tags: List[str] = []
+    for c in tags_hit:
+        t = c.get("tag")
+        if t and t not in item_tags:
+            item_tags.append(t)
+    item_tags = item_tags[:5]
     sources_by_platform: Dict[str, Dict[str, Any]] = {}
     for c in group:
         pid = c["source_id"]
@@ -379,7 +396,8 @@ def group_to_item(group: List[Dict[str, Any]], date_str: str, score: int) -> Dic
         "key": key,
         "title": best["title"],
         "score": score,
-        "event_type": (tags_hit[0]["tag"] if tags_hit else ""),
+        "event_type": item_tags[0] if item_tags else "",
+        "tags": item_tags,
         "match_level": _level_of(best.get("relevance")),
         "match_score": round(float(best.get("relevance") or 0), 3),
         "sources": list(sources_by_platform.values()),
@@ -390,15 +408,31 @@ def group_to_item(group: List[Dict[str, Any]], date_str: str, score: int) -> Dic
         "last_time": max(last_times).strftime("%H:%M") if last_times else "",
         "url": best.get("url", ""),
         "mobile_url": best.get("mobile_url", ""),
-        "members": [
-            {
-                "title": c["title"], "source_id": c["source_id"],
-                "source_name": c["source_name"], "rank": c["rank"], "url": c["url"],
-                "tag": c.get("tag", ""), "relevance": c.get("relevance"),
-            }
-            for c in group[:8]
-        ],
+        "members": _unique_members(group),
     }
+
+
+def _unique_members(group: List[Dict[str, Any]], limit: int = 8) -> List[Dict[str, Any]]:
+    """成员去重：同一 (标题, 来源) 只保留一条。
+
+    组内候选已按相关度降序排序（aggregate_candidates），取首个即该 (标题,来源) 的最优标签。
+    multi-tag 后同一新闻会按标签出现多条候选，避免详情面板出现重复行。
+    """
+    seen = set()
+    members: List[Dict[str, Any]] = []
+    for c in group:
+        mkey = (c["title"], c["source_id"])
+        if mkey in seen:
+            continue
+        seen.add(mkey)
+        members.append({
+            "title": c["title"], "source_id": c["source_id"],
+            "source_name": c["source_name"], "rank": c["rank"], "url": c["url"],
+            "tag": c.get("tag", ""), "relevance": c.get("relevance"),
+        })
+        if len(members) >= limit:
+            break
+    return members
 
 
 def _level_of(relevance: Optional[float]) -> str:

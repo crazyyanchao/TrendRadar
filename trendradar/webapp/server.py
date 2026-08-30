@@ -21,6 +21,13 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from trendradar import __version__
+from trendradar.webapp.keywords import (
+    KeywordExtractionError,
+    MAX_EXTRACT_TEXT,
+    extract_keywords,
+    resolve_frequency_path,
+    sync_frequency_words,
+)
 from trendradar.webapp.reader import AUTHORITY_PLATFORMS, TerminalReader, interests_hash
 from trendradar.webapp.store import VALID_TOPIC_STATUS, TerminalStore
 
@@ -270,8 +277,23 @@ def api_profile_post(app: TerminalApp, params: dict, body: dict) -> dict:
 
     profile = app.store.save_profile(payload, _now(app), interests_hash=new_hash or None)
 
+    # 关注关键词变化 → 同步回主流程 frequency_words.txt（失败仅警告，不阻塞保存）
+    old_kws = sorted({str(k).strip() for k in (current.get("keywords") or []) if str(k).strip()})
+    new_kws = sorted({str(k).strip() for k in (profile.get("keywords") or []) if str(k).strip()})
+    keywords_changed = old_kws != new_kws
+    if keywords_changed:
+        try:
+            sync_frequency_words(resolve_frequency_path(), new_kws)
+        except Exception as e:  # noqa: BLE001 —— 同步失败不阻塞保存，仅警告
+            print(f"[选题终端] 同步频率词失败(不阻塞): {e}")
+
+    # 数据源偏好变化 → 重新生成选题（禁用的源不再参与 TOP10）
+    old_prefs = current.get("source_prefs") or {}
+    new_prefs = profile.get("source_prefs") or {}
+    prefs_changed = old_prefs != new_prefs
+
     task_id = None
-    changed = interests and new_hash != old_hash
+    changed = (interests and new_hash != old_hash) or keywords_changed or prefs_changed
     if changed:
         if app.scorer is not None:
             task_id = app.scorer.trigger_rescore()
@@ -281,6 +303,21 @@ def api_profile_post(app: TerminalApp, params: dict, body: dict) -> dict:
                 status=503, code="scorer_unavailable",
             )
     return {"profile": profile, "task_id": task_id}
+
+
+def api_keywords_extract(app: TerminalApp, params: dict, body: dict | None) -> dict:
+    text = str((body or {}).get("text") or "").strip()
+    if not text:
+        raise AppError("缺少 text 参数")
+    if len(text) > MAX_EXTRACT_TEXT:
+        raise AppError(f"text 过长（最多 {MAX_EXTRACT_TEXT} 字符）")
+    if app.scorer is None or app.engine != "ai":
+        raise AppError("AI 服务不可用（未配置模型或 API Key）", status=503, code="ai_unavailable")
+    try:
+        keywords = extract_keywords(app.ctx, text)
+    except KeywordExtractionError as e:
+        raise AppError(str(e), status=e.status or 502, code=e.code or "ai_extract_failed")
+    return {"keywords": keywords}
 
 
 def api_topic_status_post(app: TerminalApp, params: dict, body: dict) -> dict:
@@ -339,6 +376,7 @@ route("GET", r"^/api/hotlists$")(api_hotlists)
 route("GET", r"^/api/rss$")(api_news_stream)
 route("GET", r"^/api/profile$")(api_profile_get)
 route("POST", r"^/api/profile$")(api_profile_post)
+route("POST", r"^/api/keywords/extract$")(api_keywords_extract)
 route("POST", r"^/api/topic-status$")(api_topic_status_post)
 route("PUT", r"^/api/notes$")(api_notes_put)
 
