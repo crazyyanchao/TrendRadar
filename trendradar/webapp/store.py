@@ -35,6 +35,7 @@ class TerminalStore:
     TOPIC_STATUS = "topics_status.json"
     NOTES = "notes.json"
     TOP10 = "top10.json"
+    LIBRARY = "library.json"
 
     def __init__(self, root: str = "output/terminal"):
         self.root = Path(root)
@@ -149,6 +150,17 @@ class TerminalStore:
 
     def save_top10_snapshot(self, snapshot: Dict[str, Any]) -> None:
         self._write_json(self.TOP10, snapshot)
+
+    # ---------- 个人选题库（收藏池） ----------
+    # 读-改-写原子性由 library.py 的模块级锁保证（本类锁仅覆盖单次读写调用）
+
+    def load_library(self) -> List[Dict[str, Any]]:
+        """选题库为条目列表；文件缺失/损坏时回退空列表"""
+        data = self._read_json(self.LIBRARY, [])
+        return data if isinstance(data, list) else []
+
+    def save_library(self, items: List[Dict[str, Any]]) -> None:
+        self._write_json(self.LIBRARY, items)
 
     # ---------- AI 研判缓存（按兴趣 hash 分目录，换兴趣后自然失配） ----------
 

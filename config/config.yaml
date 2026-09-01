@@ -230,12 +230,184 @@ rss:
       name: "雅虎财经"
       url: "https://finance.yahoo.com/news/rssindex"
 
+    # ---- 新增:财经媒体信源(第一批,纯配置) ----
+
+    # 官方 RSS(人民网官方频道,已验证)
+    - id: "people-daily-politics"
+      name: "人民日报·时政"
+      url: "http://www.people.com.cn/rss/politics.xml"
+      max_age_days: 1
+      # 其他可用栏目(需要时复制以上条目改 id/name/url):
+      # world.xml 国际 / society.xml 社会 / ywkx.xml 要闻快讯 / military.xml 军事
+
+    # RSSHub 公共实例(已验证可用)。若自建 RSSHub 实例,
+    # 仅需把 URL 前缀换成实例地址(如 http://localhost:1200/cls/telegraph),
+    # 或修改下方 rsshub.base_url 后改用 media_sources 中的 rsshub 类型源
+    - id: "cls-telegraph"
+      name: "财联社·电报"
+      url: "https://rsshub.dicomp.net/cls/telegraph"
+      max_age_days: 1
+    - id: "cls-depth"
+      name: "财联社·深度"
+      url: "https://rsshub.dicomp.net/cls/depth"
+      max_age_days: 2
+    - id: "caixin-latest"
+      name: "财新·最新"
+      url: "https://rsshub.dicomp.net/caixin/latest"
+      max_age_days: 1
+      # 注:财新付费内容不在 feed 中,仅免费文章与更新提醒
+    - id: "yicai-news"
+      name: "第一财经"
+      url: "https://rsshub.dicomp.net/yicai/news"
+      max_age_days: 1
+      # 注:yicai.com/feed 为假 feed(返回 HTML),勿用
+    - id: "cctv-jjbxs"
+      name: "央视财经·经济半小时"
+      url: "https://rsshub.dicomp.net/cctv/lm/jjbxs"
+      max_age_days: 2
+    - id: "inewsweek-finance"
+      name: "中国新闻周刊·经济"
+      url: "https://rsshub.dicomp.net/inewsweek/finance"
+      max_age_days: 2
+
+    # 已放弃的源:
+    # 数据宝 / ETF风向标:纯微信公众号,无公开 RSS/API 且反爬极严,放弃
+    # 券商中国:由证券时报快讯流(stcn-express,见 media_sources)覆盖
+
     # 自定义源示例
     # - id: "custom-feed"
     #   name: "自定义源"
     #   url: "https://example.com/feed.xml"
     #   enabled: false
     #   max_age_days: 0               # 示例：禁用过滤，推送所有文章
+
+
+# ===============================================================
+# 3.1 RSSHub 实例配置
+#
+# 用于 media_sources 中 type: rsshub 的源（base_url + path 拼接完整地址），
+# 以及 rss.feeds 中 RSSHub feed 的前缀替换（见 feeds 注释）。
+# 公共实例已验证可用（rsshub.dicomp.net）；如自建实例仅需改此处。
+# ===============================================================
+rsshub:
+  base_url: "https://rsshub.dicomp.net"   # 自建实例示例: "http://localhost:1200"
+  enabled: true
+
+
+# ===============================================================
+# 3.2 媒体信源 - 自建解析器（site 类型）
+#
+# 与 rss.feeds 统一入库（rss_items 表），自动进入选题终端时间流与状态灯。
+# 每源三选一接入方式：
+#   ① rss.feeds 配完整 URL（官方 RSS / RSSHub）   —— 纯配置
+#   ② media_sources 配 type: rsshub + path        —— 纯配置（拼 rsshub.base_url）
+#   ③ media_sources 配 type: site + parser_id     —— 自建解析器（本段）
+#
+# 字段说明:
+#   id/name/enabled/max_age_days: 与 rss.feeds 语义一致
+#   parser_id: 对应 trendradar/crawler/media/parsers/ 下的解析器
+#   target_url: 目标列表页/API 地址
+#   headers: 每源自定义请求头（反爬站点用，如 Referer）
+#   timeout: 覆盖全局超时（秒）; retry: 失败重试次数
+#   scheme: 强制 http/https（处理 https 握手异常站点）
+# ===============================================================
+media_sources:
+  enabled: true
+
+  # 全局抓取参数（可被单源覆盖）
+  request_interval: 1500        # 请求间隔（毫秒），反爬站点建议 ≥1000
+  timeout: 20                   # 默认超时（秒）
+  max_items: 50                 # 每源默认最大条数
+
+  sources:
+    # ---- 服务端渲染，HTML 解析可用 ----
+    - id: "nbd-news"
+      name: "每日经济新闻"
+      type: "site"
+      parser_id: "nbd"
+      target_url: "https://www.nbd.com.cn/"
+      max_age_days: 1
+    - id: "pedaily-news"
+      name: "投资界"
+      type: "site"
+      parser_id: "pedaily"
+      target_url: "https://news.pedaily.cn/"
+      max_age_days: 1
+    - id: "jjckb-news"
+      name: "经济参考报·要闻"
+      type: "site"
+      parser_id: "jjckb"
+      target_url: "http://www.jjckb.cn/yw.htm"
+      max_age_days: 1
+    - id: "news-cn-home"
+      name: "新华社·新华网"
+      type: "site"
+      parser_id: "news_cn"
+      target_url: "http://www.news.cn/"
+      max_age_days: 2
+      # 注:whxw.htm(权威发布)栏目已停更,故抓首页并按 URL 日期过滤近 7 天
+    - id: "xinhua08-fin"
+      name: "中经社·新华财经"
+      type: "site"
+      parser_id: "xinhua08"
+      target_url: "https://www.cnfin.com/"
+      max_age_days: 1
+      # 注:app.xinhua08.com/rss.php 为假 feed(返回 HTML),勿用
+
+    # ---- 静态内容或部分渲染,可用但更新有限 ----
+    - id: "cs-com-news"
+      name: "中国证券报"
+      type: "site"
+      parser_id: "cs_com"
+      target_url: "https://www.cs.com.cn/xwzx/"
+      timeout: 30
+      retry: 3
+      headers: {"Referer": "https://www.cs.com.cn/"}
+      max_age_days: 1
+      # 注:http 直连超时,须 https;栏目页为静态快照,内容更新滞后
+    - id: "csrc-publish"
+      name: "证监会发布·要闻"
+      type: "site"
+      parser_id: "csrc"
+      target_url: "http://www.csrc.gov.cn/csrc/c100028/common_list.shtml"
+      max_age_days: 3
+      # 注:静态页更新滞后(gov 改版后停留旧文),反爬严,失败只黄灯
+
+    # ---- JS 渲染/反爬,HTML 兜底(大概率失败,只黄灯不阻塞) ----
+    - id: "stcn-express"
+      name: "证券时报·快讯"
+      type: "site"
+      parser_id: "stcn"
+      target_url: "http://www.stcn.com/article/list/kx.html"
+      scheme: "http"            # https 握手异常,强制 http
+      retry: 3
+      max_age_days: 1
+      # 券商中国的替代:快讯流覆盖其主要内容
+      # 推荐:自建 RSSHub 实例后改走 rsshub.base_url + /stcn/kx 路由
+    - id: "cnstock-news"
+      name: "上海证券报"
+      type: "site"
+      parser_id: "cnstock"
+      target_url: "https://www.cnstock.com/"
+      retry: 3
+      max_age_days: 1
+    - id: "chinafund-news"
+      name: "中国基金报"
+      type: "site"
+      parser_id: "chinafund"
+      target_url: "http://www.chinafund.cn/"
+      timeout: 30
+      retry: 3
+      headers: {"Referer": "http://www.chinafund.cn/"}
+      max_age_days: 1
+    - id: "caijing-roll"
+      name: "财经网"
+      type: "site"
+      parser_id: "caijing"
+      target_url: "https://www.caijing.com.cn/"
+      max_age_days: 1
+      # 注:正文列表 JS 渲染,首页 HTML 仅少量服务端链接
+      # 推荐:自建 RSSHub 实例后改走 rsshub.base_url + /caijing/roll 路由
 
 
 # ===============================================================

@@ -43,7 +43,7 @@
 <!-- ═══════════ 三栏主区 ═══════════ -->
 <main id="terminal-main">
 
-    <!-- 左栏：TOP10 + 权威头条 -->
+    <!-- 左栏：TOP10 + 选题库 + 权威头条 -->
     <section class="col-left">
         <div class="glass-card card-pad" id="top10-card">
             <div class="card-title-row">
@@ -54,6 +54,16 @@
             <p class="card-subtitle"><span data-i18n="tt.top10Subtitle"></span><span class="top10-gen" id="top10-gen"></span></p>
             <div id="top10-progress"></div>
             <ol id="top10-list" class="list-none p-0 m-0 section-scroll" style="list-style:none;"></ol>
+        </div>
+
+        <div class="glass-card card-pad" id="library-card">
+            <div class="card-title-row">
+                <h2 class="card-title" data-i18n="tt.libTitle"></h2>
+                <span class="ml-auto lib-count" id="lib-count"></span>
+                <button class="btn btn-ghost btn-mini" id="btn-lib-upload"><i class="fa-solid fa-upload"></i><span data-i18n="tt.libUpload"></span></button>
+            </div>
+            <p class="card-subtitle" data-i18n="tt.libSubtitle"></p>
+            <ul id="library-list" class="list-none p-0 m-0 section-scroll" style="list-style:none;"></ul>
         </div>
 
         <div class="glass-card card-pad" id="authority-card">
@@ -146,6 +156,24 @@
         <div class="modal-actions">
             <button class="btn btn-ghost" id="btn-cancel-settings" data-i18n="tt.cancelBtn"></button>
             <button class="btn btn-primary" id="btn-save-settings" data-i18n="tt.saveBtn"></button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════ 选题库 · 批量上传弹窗 ═══════════ -->
+<div class="modal-overlay hidden" id="library-modal">
+    <div class="modal-box" role="dialog" aria-modal="true">
+        <h3 class="modal-title" data-i18n="tt.libImportTitle"></h3>
+
+        <div class="form-row">
+            <label class="form-label" for="lib-import-text" data-i18n="tt.libImportLabel"></label>
+            <textarea class="form-input" id="lib-import-text" data-i18n-placeholder="tt.libImportPlaceholder" rows="8"></textarea>
+            <div class="form-hint" data-i18n="tt.libImportHint"></div>
+        </div>
+
+        <div class="modal-actions">
+            <button class="btn btn-ghost" id="btn-cancel-lib-import" data-i18n="tt.cancelBtn"></button>
+            <button class="btn btn-primary" id="btn-lib-import-run" data-i18n="tt.libImportBtn"></button>
         </div>
     </div>
 </div>

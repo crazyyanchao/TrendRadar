@@ -231,12 +231,189 @@ rss:
       name: "Yahoo Finance"
       url: "https://finance.yahoo.com/news/rssindex"
 
+    # ---- New: financial media sources (batch 1, config only) ----
+
+    # Official RSS (People's Daily official channels, verified)
+    - id: "people-daily-politics"
+      name: "People's Daily · Politics"
+      url: "http://www.people.com.cn/rss/politics.xml"
+      max_age_days: 1
+      # Other channels (copy the entry above and change id/name/url):
+      # world.xml International / society.xml Society / ywkx.xml Headlines / military.xml Military
+
+    # RSSHub public instance (verified). If you self-host RSSHub, just replace
+    # the URL prefix (e.g. http://localhost:1200/cls/telegraph), or change
+    # rsshub.base_url below and use type: rsshub sources in media_sources
+    - id: "cls-telegraph"
+      name: "CLS · Telegraph"
+      url: "https://rsshub.dicomp.net/cls/telegraph"
+      max_age_days: 1
+    - id: "cls-depth"
+      name: "CLS · Depth"
+      url: "https://rsshub.dicomp.net/cls/depth"
+      max_age_days: 2
+    - id: "caixin-latest"
+      name: "Caixin · Latest"
+      url: "https://rsshub.dicomp.net/caixin/latest"
+      max_age_days: 1
+      # Note: paywalled content is not included, free articles & update alerts only
+    - id: "yicai-news"
+      name: "Yicai"
+      url: "https://rsshub.dicomp.net/yicai/news"
+      max_age_days: 1
+      # Note: yicai.com/feed is a fake feed (returns HTML), do not use
+    - id: "cctv-jjbxs"
+      name: "CCTV Finance · Economic Half Hour"
+      url: "https://rsshub.dicomp.net/cctv/lm/jjbxs"
+      max_age_days: 2
+    - id: "inewsweek-finance"
+      name: "China Newsweek · Economy"
+      url: "https://rsshub.dicomp.net/inewsweek/finance"
+      max_age_days: 2
+
+    # Dropped sources:
+    # Shujubao / ETF Wind Vane: WeChat official-account only, no public RSS/API, abandoned
+    # Quanshang China: covered by Securities Times express stream (stcn-express, see media_sources)
+
     # Custom feed example
     # - id: "custom-feed"
     #   name: "Custom Feed"
     #   url: "https://example.com/feed.xml"
     #   enabled: false
     #   max_age_days: 0               # Example: disable filtering, push all articles
+
+
+# ===============================================================
+# 3.1 RSSHub instance config
+#
+# Used by media_sources type: rsshub sources (base_url + path),
+# and as prefix for RSSHub feeds in rss.feeds (see comments above).
+# Public instance verified (rsshub.dicomp.net); point base_url at your
+# own instance to replace it.
+# ===============================================================
+rsshub:
+  base_url: "https://rsshub.dicomp.net"   # Self-hosted example: "http://localhost:1200"
+  enabled: true
+
+
+# ===============================================================
+# 3.2 Media sources - built-in parsers (type: site)
+#
+# Stored together with rss.feeds (rss_items table), auto-appear in the
+# terminal timeline and status lights.
+# Three ways to connect a source:
+#   1) rss.feeds with a full URL (official RSS / RSSHub)    -- config only
+#   2) media_sources with type: rsshub + path               -- config only (joins rsshub.base_url)
+#   3) media_sources with type: site + parser_id            -- built-in parser (this section)
+#
+# Fields:
+#   id/name/enabled/max_age_days: same semantics as rss.feeds
+#   parser_id: parser under trendradar/crawler/media/parsers/
+#   target_url: list page / API URL
+#   headers: per-source custom headers (anti-crawl sites, e.g. Referer)
+#   timeout: overrides global timeout (s); retry: retry count
+#   scheme: force http/https (for sites with broken https handshake)
+# ===============================================================
+media_sources:
+  enabled: true
+
+  # Global crawl params (per-source overrides apply)
+  request_interval: 1500        # request interval (ms), >=1000 for anti-crawl sites
+  timeout: 20                   # default timeout (s)
+  max_items: 50                 # default max items per source
+
+  sources:
+    # ---- Server-rendered, HTML parsing works ----
+    - id: "nbd-news"
+      name: "National Business Daily"
+      type: "site"
+      parser_id: "nbd"
+      target_url: "https://www.nbd.com.cn/"
+      max_age_days: 1
+    - id: "pedaily-news"
+      name: "PEdaily"
+      type: "site"
+      parser_id: "pedaily"
+      target_url: "https://news.pedaily.cn/"
+      max_age_days: 1
+    - id: "jjckb-news"
+      name: "Economic Information Daily · Top"
+      type: "site"
+      parser_id: "jjckb"
+      target_url: "http://www.jjckb.cn/yw.htm"
+      max_age_days: 1
+    - id: "news-cn-home"
+      name: "Xinhua · News.cn"
+      type: "site"
+      parser_id: "news_cn"
+      target_url: "http://www.news.cn/"
+      max_age_days: 2
+      # Note: whxw.htm (authoritative releases) stopped updating; homepage is
+      # parsed and filtered by URL date to the last 7 days
+    - id: "xinhua08-fin"
+      name: "China Financial Information Network"
+      type: "site"
+      parser_id: "xinhua08"
+      target_url: "https://www.cnfin.com/"
+      max_age_days: 1
+      # Note: app.xinhua08.com/rss.php is a fake feed (returns HTML), do not use
+
+    # ---- Static/partial rendering, usable but limited ----
+    - id: "cs-com-news"
+      name: "China Securities Journal"
+      type: "site"
+      parser_id: "cs_com"
+      target_url: "https://www.cs.com.cn/xwzx/"
+      timeout: 30
+      retry: 3
+      headers: {"Referer": "https://www.cs.com.cn/"}
+      max_age_days: 1
+      # Note: plain http times out, must use https; column page is a static
+      # snapshot with stale content
+    - id: "csrc-publish"
+      name: "CSRC · Releases"
+      type: "site"
+      parser_id: "csrc"
+      target_url: "http://www.csrc.gov.cn/csrc/c100028/common_list.shtml"
+      max_age_days: 3
+      # Note: static page lags behind (stale after gov redesign); anti-crawl,
+      # failures only show a yellow light
+
+    # ---- JS-rendered / anti-crawl, HTML fallback (may fail, yellow light) ----
+    - id: "stcn-express"
+      name: "Securities Times · Express"
+      type: "site"
+      parser_id: "stcn"
+      target_url: "http://www.stcn.com/article/list/kx.html"
+      scheme: "http"            # https handshake broken, force http
+      retry: 3
+      max_age_days: 1
+      # Covers Quanshang China (dropped WeChat source) with the express stream
+      # Recommended: self-host RSSHub and use rsshub.base_url + /stcn/kx instead
+    - id: "cnstock-news"
+      name: "Shanghai Securities News"
+      type: "site"
+      parser_id: "cnstock"
+      target_url: "https://www.cnstock.com/"
+      retry: 3
+      max_age_days: 1
+    - id: "chinafund-news"
+      name: "China Fund News"
+      type: "site"
+      parser_id: "chinafund"
+      target_url: "http://www.chinafund.cn/"
+      timeout: 30
+      retry: 3
+      headers: {"Referer": "http://www.chinafund.cn/"}
+      max_age_days: 1
+    - id: "caijing-roll"
+      name: "Caijing"
+      type: "site"
+      parser_id: "caijing"
+      target_url: "https://www.caijing.com.cn/"
+      max_age_days: 1
+      # Note: article list is JS-rendered; homepage HTML has few server-side links
+      # Recommended: self-host RSSHub and use rsshub.base_url + /caijing/roll instead
 
 
 # ===============================================================

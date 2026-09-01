@@ -383,7 +383,7 @@ route("PUT", r"^/api/notes$")(api_notes_put)
 
 def register_task_routes():
     """M3/M4 由 scoring/research 模块注入剩余路由（score/top10、research、tasks）"""
-    for module_name in ("trendradar.webapp.scoring", "trendradar.webapp.research"):
+    for module_name in ("trendradar.webapp.scoring", "trendradar.webapp.research", "trendradar.webapp.library"):
         try:
             module = __import__(module_name, fromlist=["register_routes"])
             register = getattr(module, "register_routes", None)
@@ -438,6 +438,9 @@ class TerminalHandler(BaseHTTPRequestHandler):
     def do_PUT(self):  # noqa: N802
         self._handle("PUT")
 
+    def do_DELETE(self):  # noqa: N802
+        self._handle("DELETE")
+
     def _handle(self, method: str) -> None:
         path = unquote(urlparse(self.path).path)
         query = {k: v[-1] for k, v in parse_qs(urlparse(self.path).query).items()}
@@ -459,7 +462,7 @@ class TerminalHandler(BaseHTTPRequestHandler):
 
     def _dispatch_api(self, method: str, path: str, query: dict) -> None:
         body = None
-        if method in ("POST", "PUT"):
+        if method in ("POST", "PUT", "DELETE"):
             if self.app.token:
                 token = self.headers.get("X-Terminal-Token", "")
                 if not secrets_safe_equal(token, self.app.token):

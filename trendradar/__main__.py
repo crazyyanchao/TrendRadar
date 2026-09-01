@@ -19,6 +19,7 @@ from trendradar.core import load_config
 from trendradar.core.analyzer import convert_keyword_stats_to_platform_stats
 from trendradar.crawler import DataFetcher
 from trendradar.storage import convert_crawl_results_to_news_data
+from trendradar.storage.base import RSSData, merge_rss_data
 from trendradar.utils.time import DEFAULT_TIMEZONE, is_within_days, calculate_days_old
 from trendradar.ai import AIAnalyzer, AIAnalysisResult
 from trendradar.core.scheduler import ResolvedSchedule
@@ -1012,6 +1013,9 @@ class NewsAnalyzer:
             # 构建 RSS 源配置
             feeds = []
             for feed_config in rss_feeds:
+                # 跳过 site 类型媒体源（由 MediaFetcher 统一抓取）
+                if feed_config.get("type") == "site":
+                    continue
                 # 读取并验证单个 feed 的 max_age_days（可选）
                 max_age_days_raw = feed_config.get("max_age_days")
                 max_age_days = None
@@ -1067,7 +1071,12 @@ class NewsAnalyzer:
             # 抓取数据
             rss_data = fetcher.fetch_all()
 
-            self._rss_source_total = len(feeds)
+            # 抓取媒体信源（site 自建解析器），失败隔离，合并入库
+            media_data = self._crawl_media_data()
+            if media_data is not None:
+                rss_data = merge_rss_data(rss_data, media_data)
+
+            self._rss_source_total = len(feeds) + (len(media_data.id_to_name) if media_data else 0)
             self._rss_source_failed = len(rss_data.failed_ids)
 
             # 保存到存储后端
@@ -1087,6 +1096,38 @@ class NewsAnalyzer:
         except Exception as e:
             print(f"[RSS] 抓取失败: {e}")
             return None, None, None, set()
+
+    def _crawl_media_data(self) -> Optional[RSSData]:
+        """
+        抓取 media_sources 中 type=site 的自建解析器源
+
+        Returns:
+            RSSData（供 _crawl_rss_data 合并入库）；未启用/无源/失败时返回 None。
+            单源失败不影响其他源（failed_ids 记录），由状态灯展示。
+        """
+        media_config = self.ctx.config.get("MEDIA_SOURCES", {})
+        if not media_config.get("ENABLED", False):
+            return None
+        site_feeds = [
+            f for f in self.ctx.rss_feeds
+            if f.get("type") == "site" and f.get("enabled", True)
+        ]
+        if not site_feeds:
+            return None
+        try:
+            from trendradar.crawler.media import MediaFetcher
+
+            fetcher = MediaFetcher.from_config(
+                media_config,
+                feeds=site_feeds,
+                timezone=self.ctx.config.get("TIMEZONE", DEFAULT_TIMEZONE),
+                use_proxy=bool(self.proxy_url),
+                proxy_url=self.proxy_url or "",
+            )
+            return fetcher.fetch_all()
+        except Exception as e:
+            print(f"[媒体] 媒体信源抓取失败: {e}")
+            return None
 
     def _process_rss_data_by_mode(self, rss_data) -> Tuple[Optional[List[Dict]], Optional[List[Dict]], Optional[List[Dict]], set]:
         """

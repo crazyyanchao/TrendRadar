@@ -145,6 +145,9 @@
         interestOnly: false,
         activeTaskId: null,
         lastHotFetchMs: 0,
+        library: [],         // 选题库条目
+        libTitles: {},       // 小写标题 -> true（TOP10 卡片「已入库」态）
+        libExpanded: false,  // 选题库是否展开（默认折叠，仅显示前 5 条）
     };
 
     window.TerminalApp = { state: State };
@@ -428,6 +431,7 @@
                       ((item.merged_count || 1) > 1 ? '<span>' + esc(t('tt.mergedCount', item.merged_count)) + '</span>' : '') +
                       '<span class="ml-auto"></span>' +
                       topicTagsHtml(item) +
+                      libAddBtnHtml(item) +
                     '</span>' +
                   '</span>' +
                 '</li>'
@@ -465,6 +469,203 @@
         return seen.slice(0, 5).map(function (tag) {
             return '<span class="badge-tag badge-type"><i class="fa-solid fa-tag"></i>' + esc(tag) + '</span>';
         }).join('');
+    }
+
+    // ═══════════════════════════════════════
+    //  选题库（个人收藏池）
+    // ═══════════════════════════════════════
+
+    var LIB_STATUS_CYCLE = { '': 'pending', 'pending': 'doing', 'doing': 'done', 'done': '' };
+    var LIB_STATUS_LABELS = { '': 'tt.libStatusNone', 'pending': 'tt.libStatusPending', 'doing': 'tt.libStatusDoing', 'done': 'tt.libStatusDone' };
+    var LIB_VISIBLE_MAX = 5;   // 默认折叠：仅展示前 5 条，其余展开查看
+
+    function reloadLibrary() {
+        return apiGet('/api/library').then(function (data) {
+            State.library = (data && data.items) || [];
+            State.libTitles = {};
+            State.library.forEach(function (it) {
+                State.libTitles[String(it.title || '').toLowerCase()] = true;
+            });
+            renderLibrary();
+        }).catch(function () {
+            // 静默降级：接口不可用时选题库保持空态，不打断页面启动
+            State.library = [];
+            State.libTitles = {};
+            renderLibrary();
+        });
+    }
+
+    function renderLibrary() {
+        var listEl = $('#library-list');
+        if (!listEl) return;
+        var countEl = $('#lib-count');
+        var items = State.library || [];
+
+        if (countEl) {
+            countEl.textContent = items.length ? t('tt.libCount', items.length) : '';
+        }
+        if (!items.length) {
+            listEl.innerHTML =
+                '<div class="empty-state"><i class="fa-solid fa-box-archive"></i><span>' +
+                esc(t('tt.libEmpty')) + '</span></div>';
+            return;
+        }
+
+        var visible = State.libExpanded ? items : items.slice(0, LIB_VISIBLE_MAX);
+        var html = visible.map(function (it) {
+            return (
+                '<li class="lib-item" data-lib-id="' + esc(it.id) + '">' +
+                  '<div class="lib-item-main">' +
+                    '<div class="lib-title" title="' + esc(it.title) + '">' + esc(it.title) + '</div>' +
+                    '<div class="lib-meta">' +
+                      '<span class="badge-tag lib-origin ' + (it.origin === 'system' ? 'sys' : 'usr') + '">' +
+                        esc(t(it.origin === 'system' ? 'tt.libOriginSystem' : 'tt.libOriginUser')) + '</span>' +
+                      '<button class="lib-status ' + esc(it.status || 'todo') + '" data-lib-status="' + esc(it.status || '') + '">' +
+                        esc(t(LIB_STATUS_LABELS[it.status] || LIB_STATUS_LABELS[''])) + '</button>' +
+                    '</div>' +
+                  '</div>' +
+                  '<button class="icon-btn lib-del" data-lib-del title="' + esc(t('tt.libDelete')) + '">' +
+                    '<i class="fa-solid fa-trash-can"></i>' +
+                  '</button>' +
+                '</li>'
+            );
+        }).join('');
+
+        if (items.length > LIB_VISIBLE_MAX) {
+            html +=
+                '<li class="lib-toggle-row"><button class="btn btn-ghost btn-mini" id="btn-lib-toggle">' +
+                (State.libExpanded ? '<i class="fa-solid fa-chevron-up"></i>' : '<i class="fa-solid fa-chevron-down"></i>') +
+                esc(t(State.libExpanded ? 'tt.showLess' : 'tt.showMore')) +
+                '</button></li>';
+        }
+        listEl.innerHTML = html;
+
+        var toggleBtn = $('#btn-lib-toggle');
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', function () {
+                State.libExpanded = !State.libExpanded;
+                renderLibrary();
+            });
+        }
+
+        listEl.querySelectorAll('[data-lib-status]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var itemId = btn.closest('.lib-item').getAttribute('data-lib-id');
+                var next = LIB_STATUS_CYCLE[btn.getAttribute('data-lib-status')] || 'pending';
+                cycleLibStatus(itemId, next);
+            });
+        });
+        listEl.querySelectorAll('[data-lib-del]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var itemId = btn.closest('.lib-item').getAttribute('data-lib-id');
+                deleteLibraryItem(itemId);
+            });
+        });
+    }
+
+    function cycleLibStatus(itemId, status) {
+        apiSend('PUT', '/api/library/items/' + itemId, { status: status }).then(function () {
+            return reloadLibrary();
+        }).catch(function (err) {
+            toast(err.message, 'error');
+        });
+    }
+
+    function deleteLibraryItem(itemId) {
+        if (!window.confirm(t('tt.libDeleteConfirm'))) return;
+        apiSend('DELETE', '/api/library/items/' + itemId).then(function () {
+            toast(t('tt.libDeleted'));
+            return reloadLibrary();
+        }).catch(function (err) {
+            toast(err.message, 'error');
+        });
+    }
+
+    /** TOP10 卡片「入库」按钮：已入库 → 禁用态；未入库 → data-lib 动作按钮（属性只放 md5 key，不放标题） */
+    function libAddBtnHtml(item) {
+        var already = State.libTitles[String(item.title || '').toLowerCase()];
+        if (already) {
+            return '<button class="btn btn-mini lib-add-btn added" disabled><i class="fa-solid fa-check"></i>' +
+                   esc(t('tt.libAdded')) + '</button>';
+        }
+        return '<button class="btn btn-ghost btn-mini lib-add-btn" data-lib="add" data-lib-key="' + esc(item.key) + '">' +
+               '<i class="fa-solid fa-box-archive"></i>' + esc(t('tt.libAdd')) + '</button>';
+    }
+
+    function handleLibAction(btn) {
+        if (btn.getAttribute('data-lib') === 'add') {
+            addTopicToLibrary(btn.getAttribute('data-lib-key'));
+        }
+    }
+
+    function addTopicToLibrary(key) {
+        var items = (State.top10 && State.top10.items) || [];
+        var item = null;
+        for (var i = 0; i < items.length; i++) {
+            if (items[i].key === key) { item = items[i]; break; }
+        }
+        if (!item) {
+            toast(t('tt.libDupToast'), 'warn');
+            return;
+        }
+        apiSend('POST', '/api/library/items', {
+            title: item.title,
+            source_key: item.key,
+            tags: (item.tags || []).slice(0, 5),
+            url: item.url || '',
+        }).then(function (res) {
+            toast(res && res.duplicate ? t('tt.libDupToast') : t('tt.libAddToast'));
+            return reloadLibrary().then(function () {
+                renderTop10();   // 刷新卡片按钮「已入库」态
+            });
+        }).catch(function (err) {
+            toast(err.message, 'error');
+        });
+    }
+
+    // ---------- 批量上传弹窗 ----------
+
+    function openLibraryImport() {
+        $('#lib-import-text').value = '';
+        $('#library-modal').classList.remove('hidden');
+        setTimeout(function () { $('#lib-import-text').focus(); }, 60);
+    }
+
+    function closeLibraryImport() {
+        $('#library-modal').classList.add('hidden');
+    }
+
+    function submitLibraryImport() {
+        var text = $('#lib-import-text').value;
+        if (!text.trim()) {
+            toast(t('tt.libNeedText'), 'warn');
+            return;
+        }
+        var btn = $('#btn-lib-import-run');
+        btn.disabled = true;
+        apiSend('POST', '/api/library/import', { text: text }).then(function (res) {
+            var msg = t('tt.libImportToast', [(res.added || 0), (res.skipped || 0)]);
+            if (res.invalid) msg += ' · ' + t('tt.libInvalid', res.invalid);
+            toast(msg, (res.added || 0) ? 'ok' : 'warn');
+            if (res.added) {
+                $('#lib-import-text').value = '';
+                closeLibraryImport();
+            }
+            return reloadLibrary();
+        }).catch(function (err) {
+            toast(err.message, 'error');
+        }).finally(function () {
+            btn.disabled = false;
+        });
+    }
+
+    function bindLibraryEvents() {
+        $('#btn-lib-upload').addEventListener('click', openLibraryImport);
+        $('#btn-cancel-lib-import').addEventListener('click', closeLibraryImport);
+        $('#library-modal').addEventListener('mousedown', function (e) {
+            if (e.target === this) closeLibraryImport();
+        });
+        $('#btn-lib-import-run').addEventListener('click', submitLibraryImport);
     }
 
     // ═══════════════════════════════════════
@@ -1302,6 +1503,9 @@
 
     function bindGlobalDelegation() {
         document.body.addEventListener('click', function (e) {
+            // 选题库动作按钮（入库）优先于选题选中：按钮在 top-item[data-key] 内部
+            var libBtn = e.target.closest('[data-lib]');
+            if (libBtn) { handleLibAction(libBtn); return; }
             var topicEl = e.target.closest('[data-key]');
             if (topicEl && !e.target.closest('a')) {
                 selectTopic(topicEl.getAttribute('data-key'));
@@ -1319,6 +1523,7 @@
             renderHotUpdated(State.hotlists.fetched_at);
         }
         if (State.top10) renderTop10();
+        renderLibrary();
         if (!State.selectedKey) resetDetail();
     };
 
@@ -1350,6 +1555,7 @@
         bindStreamToggle();
         bindSettingsInput();
         bindKeywordAi();
+        bindLibraryEvents();
         bindGlobalDelegation();
 
         // TOP10 手动重新生成
@@ -1372,6 +1578,7 @@
                 return reloadAllData(false);
             })
             .then(reloadTop10)
+            .then(reloadLibrary)
             .catch(function (err) {
                 console.error(err);
                 toast(err.message, 'error');

@@ -212,6 +212,62 @@ def _load_rss_config(config_data: Dict) -> Dict:
     }
 
 
+def _load_rsshub_config(config_data: Dict) -> Dict:
+    """加载 RSSHub 实例配置（媒体信源 type: rsshub 源拼接 base_url + path 使用）"""
+    rsshub = config_data.get("rsshub", {})
+    # RSSHUB_BASE_URL 环境变量优先（Docker 部署时无需改挂载的 config.yaml 即可切换实例）
+    base_url = os.environ.get("RSSHUB_BASE_URL", "") or str(
+        rsshub.get("base_url", "https://rsshub.dicomp.net")
+    ).rstrip("/")
+    return {
+        "ENABLED": rsshub.get("enabled", True),
+        "BASE_URL": base_url,
+    }
+
+
+def _load_media_sources_config(config_data: Dict, rss_config: Dict) -> Dict:
+    """
+    加载媒体信源配置（media_sources 段，自建解析器源）
+
+    关键：将 sources 转为与 rss.feeds 同构的 dict（带 type: "site" 标记）追加进
+    rss_config["FEEDS"]，使下游（webapp feeds 列表 / 新鲜度过滤 / standalone /
+    状态灯）零改动自动覆盖；仅 _crawl_rss_data 构建 RSSFeedConfig 时跳过 site 条目。
+    """
+    media = config_data.get("media_sources", {})
+    sources = media.get("sources", [])
+    result = {
+        "ENABLED": media.get("enabled", False),
+        "REQUEST_INTERVAL": media.get("request_interval", 1500),
+        "TIMEOUT": media.get("timeout", 20),
+        "MAX_ITEMS": media.get("max_items", 50),
+        "SOURCES": [],
+    }
+    feeds = rss_config.get("FEEDS", [])
+    for s in sources:
+        if not s.get("id") or not s.get("parser_id"):
+            continue
+        entry = {
+            "id": s["id"],
+            "name": s.get("name", s["id"]),
+            "type": s.get("type", "site"),
+            "parser_id": s["parser_id"],
+            "target_url": s.get("target_url", ""),
+            "url": s.get("url", ""),
+            "path": s.get("path", ""),
+            "enabled": s.get("enabled", True),
+            "max_age_days": s.get("max_age_days"),
+            "max_items": s.get("max_items", 0),
+            "headers": s.get("headers", {}),
+            "timeout": s.get("timeout", 0),
+            "scheme": s.get("scheme", ""),
+            "verify": s.get("verify", True),
+            "retry": s.get("retry", 2),
+        }
+        result["SOURCES"].append(entry)
+        feeds.append(entry)  # 合并进 FEEDS（关键一步）
+    return result
+
+
 def _load_display_config(config_data: Dict) -> Dict:
     """加载推送内容显示配置"""
     display = config_data.get("display", {})
@@ -575,6 +631,12 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
 
     # RSS 配置
     config["RSS"] = _load_rss_config(config_data)
+
+    # RSSHub 实例配置
+    config["RSSHUB"] = _load_rsshub_config(config_data)
+
+    # 媒体信源配置（会向 config["RSS"]["FEEDS"] 追加 site 类型源条目）
+    config["MEDIA_SOURCES"] = _load_media_sources_config(config_data, config["RSS"])
 
     # AI 模型共享配置
     config["AI"] = _load_ai_config(config_data)

@@ -63,6 +63,8 @@ services:
       - CRON_SCHEDULE=${CRON_SCHEDULE:-*/30 * * * *}
       - RUN_MODE=${RUN_MODE:-cron}
       - IMMEDIATE_RUN=${IMMEDIATE_RUN:-true}
+      # 媒体信源 RSSHub 实例（覆盖 config.yaml 的 rsshub.base_url，自建实例时填写）
+      - RSSHUB_BASE_URL=${RSSHUB_BASE_URL:-}
 
   trendradar-mcp:
     build:

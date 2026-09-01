@@ -138,6 +138,38 @@
     ]);
 
     // ═══════════════════════════════════════
+    //  选题库
+    // ═══════════════════════════════════════
+    add([
+        ['tt.libTitle', '选题库', 'Topic Library'],
+        ['tt.libSubtitle', '个人收藏池 · 独立于 TOP10 评分', 'Your personal pool · independent of TOP10 scoring'],
+        ['tt.libUpload', '上传', 'Upload'],
+        ['tt.libCount', '{0} 条', '{0} items'],
+        ['tt.libEmpty', '选题库为空。点击「上传」批量导入，或在左侧 TOP10 卡片点「入库」。', 'Empty. Click "Upload" to import in bulk, or "Add" on TOP10 cards.'],
+        ['tt.libAdd', '入库', 'Add'],
+        ['tt.libAdded', '已入库', 'Added'],
+        ['tt.libAddToast', '已加入选题库', 'Added to topic library'],
+        ['tt.libDupToast', '该选题已在选题库中', 'Already in your topic library'],
+        ['tt.libImportTitle', '批量入库', 'Import Topics'],
+        ['tt.libImportLabel', '粘贴选题（每行一条）', 'Paste topics (one per line)'],
+        ['tt.libImportPlaceholder', '粘贴要入库的选题，每行一条，支持 1. 序号与 - 列表符号…', 'Paste topics to import, one per line; numbered/bulleted lists OK…'],
+        ['tt.libImportHint', '自动去除序号/列表符号；重复标题自动跳过', 'Numbering/bullets are stripped; duplicate titles are skipped'],
+        ['tt.libImportBtn', '批量入库', 'Import'],
+        ['tt.libNeedText', '请先粘贴要入库的选题', 'Paste some topics first'],
+        ['tt.libImportToast', '新增 {0} 条 · 跳过 {1} 条', '{0} added · {1} skipped'],
+        ['tt.libInvalid', '无效 {0} 条', '{0} invalid'],
+        ['tt.libDelete', '删除', 'Delete'],
+        ['tt.libDeleteConfirm', '确认从选题库删除这条选题？', 'Remove this topic from the library?'],
+        ['tt.libDeleted', '已删除', 'Deleted'],
+        ['tt.libStatusNone', '未处理', 'To-do'],
+        ['tt.libStatusPending', '待处理', 'Pending'],
+        ['tt.libStatusDoing', '处理中', 'Doing'],
+        ['tt.libStatusDone', '已完成', 'Done'],
+        ['tt.libOriginSystem', '系统', 'System'],
+        ['tt.libOriginUser', '手动', 'Manual'],
+    ]);
+
+    // ═══════════════════════════════════════
     //  杂项
     // ═══════════════════════════════════════
     add([

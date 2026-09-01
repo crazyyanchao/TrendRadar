@@ -174,6 +174,36 @@ class RSSData:
         return sum(len(rss_list) for rss_list in self.items.values())
 
 
+def merge_rss_data(a: RSSData, b: RSSData) -> RSSData:
+    """
+    合并两个 RSSData（a 在前，b 在后）
+
+    合并规则:
+    - items: 按 feed_id 并集（同 feed_id 追加条目，feed_id 互不冲突时即并集）
+    - id_to_name: 并集（a 优先）
+    - failed_ids: 去重合并
+    - date/crawl_time: 取 a 的（同一次运行内一致）
+    """
+    merged_items: Dict[str, List[RSSItem]] = {}
+    for feed_id, rss_list in a.items.items():
+        merged_items[feed_id] = list(rss_list)
+    for feed_id, rss_list in b.items.items():
+        merged_items.setdefault(feed_id, []).extend(rss_list)
+
+    id_to_name = dict(a.id_to_name)
+    id_to_name.update(b.id_to_name)
+
+    failed_ids = list(dict.fromkeys([*a.failed_ids, *b.failed_ids]))
+
+    return RSSData(
+        date=a.date,
+        crawl_time=a.crawl_time,
+        items=merged_items,
+        id_to_name=id_to_name,
+        failed_ids=failed_ids,
+    )
+
+
 @dataclass
 class NewsData:
     """
